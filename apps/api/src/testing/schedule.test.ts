@@ -245,7 +245,8 @@ describe('4C: DATABASE-LEVEL guarantees', () => {
     };
     for (const t of ['worker_services', 'worker_availability', 'worker_time_off']) {
       assert.equal(await q([], `SELECT count(*)::int n FROM ${t}`), 0, `${t}: no context`);
-      assert.equal(await q([['app.public_read', 'on']], `SELECT count(*)::int n FROM ${t}`), 0, `${t}: public`);
+      // schedules and time off are never public (worker_services is public-readable for active barbers/services since 4D; covered in eligibility.test.ts)
+      if (t !== 'worker_services') assert.equal(await q([['app.public_read', 'on']], `SELECT count(*)::int n FROM ${t}`), 0, `${t}: public`);
       assert.equal(await q([['app.shop_id', ID.shopB]], `SELECT count(*)::int n FROM ${t} WHERE shop_id <> '${ID.shopB}'`), 0, `${t}: cross-shop`);
     }
     assert.ok((await q([['app.shop_id', ID.shopA]], 'SELECT count(*)::int n FROM worker_services')) >= 4);

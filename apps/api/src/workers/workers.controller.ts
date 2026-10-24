@@ -7,7 +7,8 @@ import { AuthContext, Effective } from '../common/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadConfig } from '../config';
 import { WorkersService } from './workers.service';
-import { addLoginSchema, availabilitySchema, createWorkerSchema, idsSchema, listWorkersSchema, timeOffListSchema, timeOffSchema, updateWorkerSchema } from './workers.schemas';
+import { AvailabilityService } from './availability.service';
+import { addLoginSchema, availabilitySchema, createWorkerSchema, eligibleSchema, idsSchema, listWorkersSchema, timeOffListSchema, timeOffSchema, updateWorkerSchema } from './workers.schemas';
 
 const upload = () => FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: loadConfig().MAX_UPLOAD_MB * 1024 * 1024, files: 1, fields: 0 } });
 const need = (f?: Express.Multer.File) => { if (!f) throw new BadRequestException({ message: 'Please choose an image file (form field "file").', code: ErrorCodes.VALIDATION_FAILED }); return f.buffer; };
@@ -15,9 +16,12 @@ const ID = () => Param('id', ParseUUIDPipe);
 
 @Controller('workers')
 export class WorkersController {
-  constructor(private svc: WorkersService) {}
+  constructor(private svc: WorkersService, private avail: AvailabilityService) {}
 
   @StaffOnly() @Get('me') me(@Auth() ctx: AuthContext) { return this.svc.me(ctx); } // static routes before ":id"
+
+  @RequirePermission('appointments.assign', 'appointments.create') @Get('eligible')
+  eligible(@Auth() ctx: AuthContext, @Query(new ZodValidationPipe(eligibleSchema)) q: any) { return this.avail.eligible(ctx, q.serviceIds, q.start); }
 
   @RequirePermission('workers.view') @Get()
   list(@Auth() ctx: AuthContext, @Perms() p: Effective, @Query(new ZodValidationPipe(listWorkersSchema)) q: any) { return this.svc.list(ctx, p, q); }

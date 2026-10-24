@@ -53,3 +53,9 @@ D1–D13 are in the Phase 0 plan. Added in Phase 2:
   "Copy shop hours" copies once (not a live link). Saving hours outside shop hours is allowed but returns warnings; the booking engine always intersects with shop hours.
 - **D36 Time off (4C).** Instants must carry a UTC offset (never interpreted in the server timezone), max one year. Own scope (`workers.update: own`) lets a barber manage only
   their own availability/time off; skills, profile and archive always need scope `all`.
+- **D37 Eligibility (4D).** `GET /workers/eligible?serviceIds=a,b[&start=<ISO with offset>]`. Capability = active, non-archived worker who can do EVERY selected service.
+  With `start`, each capable worker is checked in the SHOP's timezone against shop hours, own window, break and time off (half-open intervals; never across local midnight);
+  unavailable workers come back with a reason (`shop_closed`, `outside_shop_hours`, `not_working`, `outside_worker_hours`, `on_break`, `time_off`).
+  Allowed for anyone holding `appointments.assign` or `appointments.create` (so workers can do walk-ins). Overlapping-appointment exclusion is added in Phase 6.
+- **D38 Public barbers.** Customers see active barbers (name, photo, which active services they do), optionally filtered to those who can do ALL chosen services.
+  Schedules and time off are never public.

@@ -60,3 +60,15 @@ export const timeOffSchema = z.object({ startAt: instant, endAt: instant, reason
     else if (v.endAt.getTime() - v.startAt.getTime() > 366 * 86400_000) ctx.addIssue({ code: 'custom', path: ['endAt'], message: 'Time off cannot exceed one year' });
   });
 export const timeOffListSchema = z.object({ from: instant.optional(), to: instant.optional() });
+
+// ---------- 4D: eligibility & public barbers ----------
+export const eligibleSchema = z.object({ serviceIds: z.string(), start: instant.optional() }).transform((v, ctx) => {
+  const ids = [...new Set(v.serviceIds.split(',').map((x) => x.trim()).filter(Boolean))];
+  if (!ids.length || ids.length > 10 || ids.some((i) => !uuid.safeParse(i).success)) { ctx.addIssue({ code: 'custom', path: ['serviceIds'], message: 'Provide 1-10 comma-separated service ids' }); return z.NEVER; }
+  return { serviceIds: ids, start: v.start };
+});
+export const publicBarbersSchema = z.object({ serviceIds: z.string().optional() }).transform((v, ctx) => {
+  const ids = [...new Set((v.serviceIds ?? '').split(',').map((x) => x.trim()).filter(Boolean))];
+  if (ids.length > 10 || ids.some((i) => !uuid.safeParse(i).success)) { ctx.addIssue({ code: 'custom', path: ['serviceIds'], message: 'serviceIds must be up to 10 comma-separated ids' }); return z.NEVER; }
+  return { serviceIds: ids };
+});
