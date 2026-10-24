@@ -59,3 +59,16 @@ D1–D13 are in the Phase 0 plan. Added in Phase 2:
   Allowed for anyone holding `appointments.assign` or `appointments.create` (so workers can do walk-ins). Overlapping-appointment exclusion is added in Phase 6.
 - **D38 Public barbers.** Customers see active barbers (name, photo, which active services they do), optionally filtered to those who can do ALL chosen services.
   Schedules and time off are never public.
+
+## Phase 5
+- **D39 Customers are per shop.** `customers` rows belong to one shop (RLS + composite FKs); `users` stays the global login. One LIVE customer per phone per shop (archived records free the number);
+  one record per account per shop. Staff-created (walk-in) customers have no account.
+- **D40 Linking is never automatic for an existing record.** Phones are unverified in Phase 1 (no OTP), so an account whose number matches an existing shop record becomes a PENDING link request;
+  the customer sees nothing about the record and cannot edit it until staff (customers.update, scope all) approve. A number the shop has never seen links instantly.
+  Revisit when OTP verification is added.
+- **D41 Two kinds of notes.** `notes` ("Prefer short haircut") is visible to the customer and editable by them; `internal_notes` is staff-only and is never returned to a customer.
+  A customer cannot change their phone (their identity) nor edit staff-only fields.
+- **D42 Own scope for customers** = customers whose preferred barber is my worker profile. A barber's newly created customers are assigned to them automatically.
+  Phase 6 widens this to "customers I have served". Out-of-scope records are 404 (existence is not revealed), and duplicate-phone errors don't disclose the other record to own-scope staff.
+- **D43 Customer self-service runs inside ONE shop's RLS context** (resolved from the slug) with every query pinned to the caller's own account; there is no cross-shop customer listing
+  (the UI asks per shop). Customers are never readable through the public (`public_read`) scope.

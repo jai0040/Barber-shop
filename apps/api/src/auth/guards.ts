@@ -4,7 +4,7 @@ import { Request } from 'express';
 import jwt from 'jsonwebtoken';
 import { ErrorCodes } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
-import { IS_AUTHENTICATED, IS_PUBLIC, PERMISSIONS_META, PLATFORM_ONLY, SKIP_CSRF, STAFF_ONLY } from '../common/decorators';
+import { IS_AUTHENTICATED, IS_PUBLIC, PERMISSIONS_META, PLATFORM_ONLY, SKIP_CSRF, STAFF_ONLY, CUSTOMER_ONLY } from '../common/decorators';
 import { Db } from '../db/db.service';
 import { TokenService } from '../core/token.service';
 import { PermissionsService, hasAny } from '../core/permissions.service';
@@ -79,6 +79,10 @@ export class PermissionGuard implements CanActivate {
       const eff = await this.perms.effective(auth.shopId, auth.userId);
       if (!hasAny(eff, required)) throw forbidden();
       req.perms = eff;
+      return true;
+    }
+    if (flag(this.r, CUSTOMER_ONLY, ctx)) {
+      if (auth.type !== 'customer') throw forbidden();
       return true;
     }
     if (flag(this.r, STAFF_ONLY, ctx)) {

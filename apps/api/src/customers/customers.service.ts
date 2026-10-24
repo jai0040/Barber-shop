@@ -1,273 +1,233 @@
 import { Injectable } from '@nestjs/common';
-import { CustomerItem, ErrorCodes, Paginated } from '@barbershop/shared';
+import { PoolClient } from 'pg';
+import { ErrorCodes } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext, Effective } from '../common/types';
 import { Db, isUniqueViolation } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
-import { normalizePhone } from '../auth/phone';
-import { loadConfig } from '../config';
 
-const notFound = (m = 'Customer not found.') => new AppException(404, ErrorCodes.NOT_FOUND, m);
-const conflict = (m: string) => new AppException(409, ErrorCodes.CONFLICT, m);
+const nf = (what = 'Customer') => new AppException(404, ErrorCodes.NOT_FOUND, `${what} not found.`);
+const conflict = (m: string, details?: unknown) => new AppException(409, ErrorCodes.CONFLICT, m, details);
+const bad = (m: string) => new AppException(400, ErrorCodes.VALIDATION_FAILED, m);
+const forbid = (m = "You don't have permission to do this.") => new AppException(403, ErrorCodes.FORBIDDEN, m);
+
+const SELECT = `SELECT c.*, w.display_name AS pw_name,
+  COALESCE((SELECT array_agg(cs.service_id) FROM customer_preferred_services cs WHERE cs.customer_id = c.id), '{}') AS service_ids
+  FROM customers c LEFT JOIN workers w ON w.id = c.preferred_worker_id`;
+const FIELDS: Record<string, string> = { name: 'name', phone: 'phone', email: 'email', notes: 'notes', internalNotes: 'internal_notes', preferredWorkerId: 'preferred_worker_id' };
+
+/** Staff view (includes internal notes and link state). */
+const staffOut = (r: any) => ({
+  id: r.id, name: r.name, phone: r.phone, email: r.email, notes: r.notes, internalNotes: r.internal_notes,
+  preferredWorkerId: r.preferred_worker_id, preferredWorkerName: r.pw_name ?? null, serviceIds: r.service_ids ?? [],
+  hasAccount: !!r.user_id, linkPending: !!r.pending_user_id, archived: !!r.archived_at, createdAt: r.created_at,
+});
+/** The customer's own view: NO internal notes, no link internals. */
+const selfOut = (r: any) => ({
+  name: r.name, phone: r.phone, email: r.email, notes: r.notes,
+  preferredWorker: r.preferred_worker_id ? { id: r.preferred_worker_id, displayName: r.pw_name } : null, serviceIds: r.service_ids ?? [],
+});
 
 @Injectable()
 export class CustomersService {
-  private cfg = loadConfig();
   constructor(private db: Db, private audit: AuditService) {}
 
-  // ==================== STAFF: LIST & SEARCH ====================
+  // ================= staff side =================
+  private scope(p: Effective, key: string) { return p.map.get(key); }
+  private async myWorkerId(c: PoolClient, ctx: AuthContext) {
+    return (await c.query('SELECT id FROM workers WHERE user_id=$1 AND archived_at IS NULL', [ctx.userId])).rows[0]?.id as string | undefined;
+  }
+  /** "own" scope = customers whose preferred barber is my worker profile (Phase 6 adds "customers I have served"). Others are 404. */
+  private async loadFor(c: PoolClient, ctx: AuthContext, p: Effective, key: string, id: string) {
+    const r = (await c.query(`${SELECT} WHERE c.id = $1`, [id])).rows[0];
+    if (!r) throw nf();
+    const s = this.scope(p, key);
+    if (s === 'all') return r;
+    if (s === 'own') { const mine = await this.myWorkerId(c, ctx); if (mine && r.preferred_worker_id === mine) return r; throw nf(); }
+    throw forbid();
+  }
+  private fresh(c: PoolClient, id: string) { return c.query(`${SELECT} WHERE c.id=$1`, [id]).then((r) => staffOut(r.rows[0])); }
 
-  async list(
-    ctx: AuthContext,
-    p: Effective,
-    q: { q?: string; preferredWorkerId?: string; page: number; limit: number }
-  ): Promise<Paginated<CustomerItem>> {
+  list(ctx: AuthContext, p: Effective, q: { q?: string; preferredWorkerId?: string; linkPending?: boolean; includeArchived: boolean; page: number; limit: number }) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const scope = p.isOwner ? 'all' : (p.map.get('customers.view') ?? 'own');
-      const conditions = ['c.shop_id = $1'];
-      const params: unknown[] = [ctx.shopId];
-
-      if (scope === 'own') {
-        // Find worker ID for current user
-        const workerId = (await c.query(`SELECT id FROM workers WHERE user_id = $1 AND shop_id = $2`, [ctx.userId, ctx.shopId])).rows[0]?.id;
-        if (!workerId) {
-          return { items: [], page: q.page, limit: q.limit, total: 0 };
-        }
-        params.push(workerId);
-        conditions.push(`c.preferred_worker_id = $${params.length}`);
-      } else if (q.preferredWorkerId) {
-        params.push(q.preferredWorkerId);
-        conditions.push(`c.preferred_worker_id = $${params.length}`);
-      }
-
+      const w: string[] = [], v: unknown[] = [];
+      const add = (sql: string, val: unknown) => { v.push(val); w.push(sql.replace(/\?/g, `$${v.length}`)); };
+      if (this.scope(p, 'customers.view') === 'own') add('c.preferred_worker_id IN (SELECT id FROM workers WHERE user_id = ?)', ctx.userId);
+      if (!q.includeArchived) w.push('c.archived_at IS NULL');
+      if (q.preferredWorkerId) add('c.preferred_worker_id = ?', q.preferredWorkerId);
+      if (q.linkPending) w.push('c.pending_user_id IS NOT NULL');
       if (q.q) {
-        params.push(`%${q.q.replace(/[%_\\]/g, '\\$&')}%`);
-        conditions.push(`(c.name ILIKE $${params.length} OR c.phone ILIKE $${params.length})`);
+        const like = `%${q.q.replace(/[%_\\]/g, '\\$&')}%`, digits = q.q.replace(/\D/g, '');
+        v.push(like); const n = v.length;
+        if (digits.length >= 3) { v.push(`%${digits}%`); w.push(`(c.name ILIKE $${n} OR c.phone LIKE $${v.length})`); } else w.push(`c.name ILIKE $${n}`);
       }
-
-      const whereClause = conditions.join(' AND ');
-      const total = Number((await c.query(`SELECT count(*)::int n FROM customers c WHERE ${whereClause}`, params)).rows[0].n);
-
-      const offset = (q.page - 1) * q.limit;
-      params.push(q.limit);
-      params.push(offset);
-
-      const rows = (await c.query(
-        `SELECT c.id, c.user_id, c.name, c.phone, c.email, c.preferred_worker_id,
-                w.display_name AS preferred_worker_name, c.notes, c.created_at, c.updated_at
-         FROM customers c
-         LEFT JOIN workers w ON w.id = c.preferred_worker_id
-         WHERE ${whereClause}
-         ORDER BY c.name ASC
-         LIMIT $${params.length - 1} OFFSET $${params.length}`,
-        params
-      )).rows;
-
-      return {
-        items: rows.map((r) => this.mapCustomerRow(r)),
-        page: q.page,
-        limit: q.limit,
-        total,
-      };
+      const where = w.length ? `WHERE ${w.join(' AND ')}` : '';
+      const total = (await c.query(`SELECT count(*)::int n FROM customers c ${where}`, v)).rows[0].n;
+      const rows = (await c.query(`${SELECT} ${where} ORDER BY lower(c.name), c.created_at LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`, v)).rows;
+      return { items: rows.map(staffOut), page: q.page, limit: q.limit, total };
     });
   }
 
-  get(ctx: AuthContext, p: Effective, id: string): Promise<CustomerItem> {
+  get(ctx: AuthContext, p: Effective, id: string) { return this.db.tenant({ shopId: ctx.shopId }, async (c) => staffOut(await this.loadFor(c, ctx, p, 'customers.view', id))); }
+
+  create(ctx: AuthContext, p: Effective, dto: any) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const scope = p.isOwner ? 'all' : (p.map.get('customers.view') ?? 'own');
-      const conditions = ['c.id = $1', 'c.shop_id = $2'];
-      const params: unknown[] = [id, ctx.shopId];
-
-      if (scope === 'own') {
-        const workerId = (await c.query(`SELECT id FROM workers WHERE user_id = $1 AND shop_id = $2`, [ctx.userId, ctx.shopId])).rows[0]?.id;
-        if (!workerId) throw notFound();
-        params.push(workerId);
-        conditions.push(`c.preferred_worker_id = $${params.length}`);
+      let preferred = dto.preferredWorkerId ?? null;
+      if (this.scope(p, 'customers.create') === 'own') { // a barber's own customers are assigned to them, so they can see what they created
+        const mine = await this.myWorkerId(c, ctx);
+        if (!mine) throw forbid("You don't have a worker profile, so you can't add customers.");
+        if (dto.preferredWorkerId && dto.preferredWorkerId !== mine) throw forbid('You can only add customers for yourself.');
+        preferred = mine;
       }
-
-      const row = (await c.query(
-        `SELECT c.id, c.user_id, c.name, c.phone, c.email, c.preferred_worker_id,
-                w.display_name AS preferred_worker_name, c.notes, c.created_at, c.updated_at
-         FROM customers c
-         LEFT JOIN workers w ON w.id = c.preferred_worker_id
-         WHERE ${conditions.join(' AND ')}`,
-        params
-      )).rows[0];
-
-      if (!row) throw notFound();
-      return this.mapCustomerRow(row);
-    });
-  }
-
-  create(
-    ctx: AuthContext,
-    dto: { name: string; phone: string; email?: string | null; preferredWorkerId?: string | null; notes?: string | null }
-  ): Promise<CustomerItem> {
-    const phone = normalizePhone(dto.phone, this.cfg.DEFAULT_COUNTRY_CODE);
-    if (!phone) throw new AppException(400, ErrorCodes.VALIDATION_FAILED, 'Invalid mobile number format.');
-
-    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      // Find matching global user account if registered
-      const matchedUserId = (await c.query(`SELECT id FROM users WHERE phone = $1`, [phone])).rows[0]?.id ?? null;
-
-      // Check preferred worker validity if provided
-      if (dto.preferredWorkerId) {
-        const pw = (await c.query(`SELECT id FROM workers WHERE id = $1 AND shop_id = $2`, [dto.preferredWorkerId, ctx.shopId])).rows[0];
-        if (!pw) throw notFound('Preferred barber not found.');
-      }
-
+      if (preferred) await this.assertWorker(c, preferred);
+      const existing = (await c.query('SELECT id FROM customers WHERE phone=$1 AND archived_at IS NULL', [dto.phone])).rows[0];
+      if (existing) throw conflict('A customer with this mobile number already exists.', this.scope(p, 'customers.view') === 'all' ? { customerId: existing.id } : undefined);
+      let id: string;
       try {
-        const res = await c.query(
-          `INSERT INTO customers (shop_id, user_id, name, phone, email, preferred_worker_id, notes)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING *`,
-          [ctx.shopId, matchedUserId, dto.name, phone, dto.email?.toLowerCase() ?? null, dto.preferredWorkerId ?? null, dto.notes ?? null]
-        );
-        const row = res.rows[0];
-
-        await this.audit.log(c, {
-          shopId: ctx.shopId,
-          userId: ctx.userId,
-          action: 'customer.create',
-          entity: 'customer',
-          entityId: row.id,
-          newValues: { name: row.name, phone: row.phone },
-          ip: ctx.ip,
-        });
-
-        return this.get(ctx, { isOwner: true, map: new Map() }, row.id);
-      } catch (e) {
-        if (isUniqueViolation(e)) {
-          throw conflict('A customer with this phone number already exists in this shop.');
-        }
-        throw e;
-      }
+        id = (await c.query(
+          `INSERT INTO customers (shop_id, name, phone, email, notes, internal_notes, preferred_worker_id, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [ctx.shopId, dto.name, dto.phone, dto.email ?? null, dto.notes ?? null, dto.internalNotes ?? null, preferred, ctx.userId])).rows[0].id;
+      } catch (e) { throw isUniqueViolation(e) ? conflict('A customer with this mobile number already exists.') : e; }
+      if (dto.serviceIds?.length) await this.writeServices(c, ctx.shopId!, id, dto.serviceIds);
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'customer.create', entity: 'customer', entityId: id, newValues: { name: dto.name, phone: dto.phone, preferredWorkerId: preferred }, ip: ctx.ip });
+      return this.fresh(c, id);
     });
   }
 
-  update(
-    ctx: AuthContext,
-    id: string,
-    dto: { name?: string; phone?: string; email?: string | null; preferredWorkerId?: string | null; notes?: string | null }
-  ): Promise<CustomerItem> {
+  update(ctx: AuthContext, p: Effective, id: string, dto: Record<string, any>) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const old = (await c.query(`SELECT * FROM customers WHERE id = $1 AND shop_id = $2 FOR UPDATE`, [id, ctx.shopId])).rows[0];
-      if (!old) throw notFound();
-
-      if (dto.preferredWorkerId) {
-        const pw = (await c.query(`SELECT id FROM workers WHERE id = $1 AND shop_id = $2`, [dto.preferredWorkerId, ctx.shopId])).rows[0];
-        if (!pw) throw notFound('Preferred barber not found.');
+      const old = await this.loadFor(c, ctx, p, 'customers.update', id);
+      if (old.archived_at) throw conflict('This customer is archived. Restore them first.');
+      if ('preferredWorkerId' in dto && this.scope(p, 'customers.update') !== 'all') throw forbid('Only managers can reassign a customer to another barber.');
+      if (dto.preferredWorkerId) await this.assertWorker(c, dto.preferredWorkerId);
+      if (dto.phone !== undefined && dto.phone !== old.phone && (old.user_id || old.pending_user_id)) throw conflict("This customer's phone is tied to their app account and can't be changed here.");
+      if (dto.phone !== undefined && dto.phone !== old.phone) {
+        if ((await c.query('SELECT 1 FROM customers WHERE phone=$1 AND archived_at IS NULL AND id<>$2', [dto.phone, id])).rowCount) throw conflict('A customer with this mobile number already exists.');
       }
-
-      const sets: string[] = [];
-      const vals: unknown[] = [id, ctx.shopId];
-      const before: Record<string, unknown> = {};
-      const after: Record<string, unknown> = {};
-
-      if (dto.name !== undefined && dto.name !== old.name) {
-        vals.push(dto.name);
-        sets.push(`name = $${vals.length}`);
-        before.name = old.name;
-        after.name = dto.name;
+      const sets: string[] = [], vals: unknown[] = [id], before: Record<string, unknown> = {}, after: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(dto)) {
+        const col = FIELDS[k]; if (!col || val === undefined || old[col] === (val ?? null)) continue;
+        vals.push(val ?? null); sets.push(`${col} = $${vals.length}`); before[k] = old[col]; after[k] = val ?? null;
       }
-      if (dto.phone !== undefined) {
-        const norm = normalizePhone(dto.phone, this.cfg.DEFAULT_COUNTRY_CODE);
-        if (norm && norm !== old.phone) {
-          vals.push(norm);
-          sets.push(`phone = $${vals.length}`);
-          before.phone = old.phone;
-          after.phone = norm;
+      if (sets.length) await c.query(`UPDATE customers SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, vals);
+      if (dto.serviceIds) {
+        const oldIds = [...(old.service_ids ?? [])].sort(); const nowIds = [...new Set<string>(dto.serviceIds)].sort();
+        if (JSON.stringify(oldIds) !== JSON.stringify(nowIds)) {
+          await c.query('DELETE FROM customer_preferred_services WHERE customer_id=$1', [id]); await this.writeServices(c, ctx.shopId!, id, nowIds);
+          before.serviceIds = oldIds; after.serviceIds = nowIds;
         }
       }
-      if (dto.email !== undefined && dto.email !== old.email) {
-        vals.push(dto.email?.toLowerCase() ?? null);
-        sets.push(`email = $${vals.length}`);
-        before.email = old.email;
-        after.email = dto.email;
-      }
-      if (dto.preferredWorkerId !== undefined && dto.preferredWorkerId !== old.preferred_worker_id) {
-        vals.push(dto.preferredWorkerId);
-        sets.push(`preferred_worker_id = $${vals.length}`);
-        before.preferredWorkerId = old.preferred_worker_id;
-        after.preferredWorkerId = dto.preferredWorkerId;
-      }
-      if (dto.notes !== undefined && dto.notes !== old.notes) {
-        vals.push(dto.notes);
-        sets.push(`notes = $${vals.length}`);
-        before.notes = old.notes;
-        after.notes = dto.notes;
-      }
-
-      if (sets.length) {
-        sets.push('updated_at = now()');
-        try {
-          await c.query(`UPDATE customers SET ${sets.join(', ')} WHERE id = $1 AND shop_id = $2`, vals);
-          await this.audit.log(c, {
-            shopId: ctx.shopId,
-            userId: ctx.userId,
-            action: 'customer.update',
-            entity: 'customer',
-            entityId: id,
-            oldValues: before,
-            newValues: after,
-            ip: ctx.ip,
-          });
-        } catch (e) {
-          if (isUniqueViolation(e)) throw conflict('A customer with this phone number already exists.');
-          throw e;
-        }
-      }
-
-      return this.get(ctx, { isOwner: true, map: new Map() }, id);
+      if (Object.keys(after).length) await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'customer.update', entity: 'customer', entityId: id, oldValues: before, newValues: after, ip: ctx.ip });
+      return this.fresh(c, id);
     });
   }
 
-  delete(ctx: AuthContext, id: string): Promise<{ deleted: boolean }> {
+  archive(ctx: AuthContext, p: Effective, id: string) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const old = (await c.query(`SELECT id, name FROM customers WHERE id = $1 AND shop_id = $2 FOR UPDATE`, [id, ctx.shopId])).rows[0];
-      if (!old) throw notFound();
-
-      await c.query(`DELETE FROM customers WHERE id = $1 AND shop_id = $2`, [id, ctx.shopId]);
-      await this.audit.log(c, {
-        shopId: ctx.shopId,
-        userId: ctx.userId,
-        action: 'customer.delete',
-        entity: 'customer',
-        entityId: id,
-        oldValues: { name: old.name },
-        ip: ctx.ip,
-      });
-
-      return { deleted: true };
+      const r = await this.loadFor(c, ctx, p, 'customers.delete', id);
+      if (r.archived_at) throw conflict('This customer is already archived.');
+      await c.query('UPDATE customers SET archived_at = now(), pending_user_id = NULL, updated_at = now() WHERE id = $1', [id]);
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'customer.archive', entity: 'customer', entityId: id, ip: ctx.ip });
+      return { archived: true };
+    });
+  }
+  restore(ctx: AuthContext, p: Effective, id: string) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const r = await this.loadFor(c, ctx, p, 'customers.delete', id);
+      if (!r.archived_at) throw conflict('This customer is not archived.');
+      try { await c.query('UPDATE customers SET archived_at = NULL, updated_at = now() WHERE id = $1', [id]); }
+      catch (e) { throw isUniqueViolation(e) ? conflict('Another customer now uses this mobile number. Resolve that first.') : e; }
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'customer.restore', entity: 'customer', entityId: id, ip: ctx.ip });
+      return this.fresh(c, id);
     });
   }
 
-  // ==================== CUSTOMER SELF PROFILE ====================
-
-  async myProfile(ctx: AuthContext): Promise<CustomerItem[]> {
-    const res = await this.db.query(
-      `SELECT c.id, c.user_id, c.name, c.phone, c.email, c.preferred_worker_id,
-              w.display_name AS preferred_worker_name, c.notes, c.created_at, c.updated_at
-       FROM customers c
-       LEFT JOIN workers w ON w.id = c.preferred_worker_id
-       WHERE c.user_id = $1`,
-      [ctx.userId]
-    );
-    return res.rows.map((r) => this.mapCustomerRow(r));
+  /** Staff decision on an account that asked to link to an existing record (phone numbers are unverified in Phase 1). */
+  resolveLink(ctx: AuthContext, p: Effective, id: string, approve: boolean) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      if (this.scope(p, 'customers.update') !== 'all') throw forbid();
+      const r = (await c.query('SELECT id, pending_user_id, archived_at FROM customers WHERE id=$1 FOR UPDATE', [id])).rows[0];
+      if (!r) throw nf();
+      if (!r.pending_user_id) throw conflict('There is no pending link request for this customer.');
+      if (approve) {
+        try { await c.query('UPDATE customers SET user_id = pending_user_id, pending_user_id = NULL, updated_at = now() WHERE id=$1', [id]); }
+        catch (e) { throw isUniqueViolation(e) ? conflict('That account is already linked to another customer record in this shop.') : e; }
+      } else await c.query('UPDATE customers SET pending_user_id = NULL, updated_at = now() WHERE id=$1', [id]);
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: approve ? 'customer.link.approve' : 'customer.link.reject', entity: 'customer', entityId: id, newValues: { accountUserId: r.pending_user_id }, ip: ctx.ip });
+      return this.fresh(c, id);
+    });
   }
 
-  private mapCustomerRow(r: any): CustomerItem {
-    return {
-      id: r.id,
-      userId: r.user_id,
-      name: r.name,
-      phone: r.phone,
-      email: r.email,
-      preferredWorkerId: r.preferred_worker_id,
-      preferredWorkerName: r.preferred_worker_name ?? null,
-      notes: r.notes,
-      createdAt: r.created_at.toISOString(),
-      updatedAt: r.updated_at.toISOString(),
-    };
+  // ================= customer self-service (a customer account acting inside ONE shop) =================
+  private async shopBySlug(slug: string) {
+    const s = await this.db.tenant({ publicRead: true }, async (c) => (await c.query('SELECT id FROM shops WHERE slug=$1', [slug])).rows[0]);
+    if (!s) throw nf('Shop');
+    return s.id as string;
+  }
+
+  async myProfile(ctx: AuthContext, slug: string) {
+    const shopId = await this.shopBySlug(slug);
+    return this.db.tenant({ shopId }, async (c) => {
+      const r = (await c.query(`${SELECT} WHERE c.user_id=$1 AND c.archived_at IS NULL`, [ctx.userId])).rows[0];
+      if (r) return { status: 'linked', profile: selfOut(r) };
+      const pending = (await c.query('SELECT 1 FROM customers WHERE pending_user_id=$1 AND archived_at IS NULL', [ctx.userId])).rowCount;
+      return { status: pending ? 'pending' : 'not_joined' }; // pending: nothing about the record is revealed
+    });
+  }
+
+  /** Become a customer of this shop. A brand-new phone => linked at once. A phone the shop already has => PENDING until staff approve. */
+  async join(ctx: AuthContext, slug: string) {
+    const shopId = await this.shopBySlug(slug);
+    return this.db.tenant({ shopId }, async (c) => {
+      const mine = (await c.query(`${SELECT} WHERE c.user_id=$1 ORDER BY c.archived_at NULLS FIRST LIMIT 1`, [ctx.userId])).rows[0];
+      if (mine?.archived_at) throw forbid('This shop has removed your profile. Please contact the shop.');
+      if (mine) return { status: 'linked', profile: selfOut(mine) };
+      const u = (await c.query('SELECT name, phone, email FROM users WHERE id=$1', [ctx.userId])).rows[0];
+      const same = (await c.query('SELECT id, user_id, pending_user_id FROM customers WHERE phone=$1 AND archived_at IS NULL FOR UPDATE', [u.phone])).rows[0];
+      if (!same) {
+        const id = (await c.query(`INSERT INTO customers (shop_id, user_id, name, phone, email, created_by) VALUES ($1,$2,$3,$4,$5,$2) RETURNING id`, [shopId, ctx.userId, u.name, u.phone, u.email])).rows[0].id;
+        await this.audit.log(c, { shopId, userId: ctx.userId, action: 'customer.join', entity: 'customer', entityId: id, newValues: { linked: true }, ip: ctx.ip });
+        return { status: 'linked', profile: selfOut((await c.query(`${SELECT} WHERE c.id=$1`, [id])).rows[0]) };
+      }
+      if (same.user_id) throw conflict('This mobile number is already registered with this shop under another account. Please contact the shop.');
+      if (same.pending_user_id && same.pending_user_id !== ctx.userId) throw conflict('A link request for this number is already waiting for the shop. Please contact the shop.');
+      if (!same.pending_user_id) {
+        await c.query('UPDATE customers SET pending_user_id=$2, updated_at=now() WHERE id=$1', [same.id, ctx.userId]);
+        await this.audit.log(c, { shopId, userId: ctx.userId, action: 'customer.link.request', entity: 'customer', entityId: same.id, ip: ctx.ip });
+      }
+      return { status: 'pending' };
+    });
+  }
+
+  async updateMyProfile(ctx: AuthContext, slug: string, dto: Record<string, any>) {
+    const shopId = await this.shopBySlug(slug);
+    return this.db.tenant({ shopId }, async (c) => {
+      const old = (await c.query(`${SELECT} WHERE c.user_id=$1 AND c.archived_at IS NULL FOR UPDATE OF c`, [ctx.userId])).rows[0];
+      if (!old) throw forbid('Join this shop first (and wait for approval if the shop asked you to).');
+      if (dto.preferredWorkerId) await this.assertWorker(c, dto.preferredWorkerId);
+      const sets: string[] = [], vals: unknown[] = [old.id], before: Record<string, unknown> = {}, after: Record<string, unknown> = {};
+      for (const k of ['name', 'email', 'notes', 'preferredWorkerId']) {
+        if (dto[k] === undefined) continue; const col = FIELDS[k];
+        if (old[col] === (dto[k] ?? null)) continue;
+        vals.push(dto[k] ?? null); sets.push(`${col} = $${vals.length}`); before[k] = old[col]; after[k] = dto[k] ?? null;
+      }
+      if (sets.length) await c.query(`UPDATE customers SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`, vals);
+      if (dto.serviceIds) {
+        await c.query('DELETE FROM customer_preferred_services WHERE customer_id=$1', [old.id]); await this.writeServices(c, shopId, old.id, dto.serviceIds);
+        before.serviceIds = old.service_ids; after.serviceIds = [...new Set(dto.serviceIds)];
+      }
+      if (Object.keys(after).length) await this.audit.log(c, { shopId, userId: ctx.userId, action: 'customer.profile.update', entity: 'customer', entityId: old.id, oldValues: before, newValues: after, ip: ctx.ip });
+      return { status: 'linked', profile: selfOut((await c.query(`${SELECT} WHERE c.id=$1`, [old.id])).rows[0]) };
+    });
+  }
+
+  // ----- helpers -----
+  private async assertWorker(c: PoolClient, id: string) {
+    if (!(await c.query(`SELECT 1 FROM workers WHERE id=$1 AND archived_at IS NULL AND status='active'`, [id])).rowCount) throw bad('That barber is not available.');
+  }
+  private async writeServices(c: PoolClient, shopId: string, customerId: string, ids: string[]) {
+    const u = [...new Set(ids)]; if (!u.length) return;
+    const r = await c.query(`INSERT INTO customer_preferred_services (customer_id, service_id, shop_id) SELECT $1, s.id, $2 FROM services s WHERE s.id = ANY($3::uuid[]) AND s.archived_at IS NULL AND s.status='active'`, [customerId, shopId, u]);
+    if (r.rowCount !== u.length) throw bad('One or more services do not exist.');
   }
 }

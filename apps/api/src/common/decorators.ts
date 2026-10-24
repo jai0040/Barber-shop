@@ -6,6 +6,7 @@ export const IS_AUTHENTICATED = 'isAuthenticated';
 export const SKIP_CSRF = 'skipCsrf';
 export const PLATFORM_ONLY = 'platformOnly';
 export const STAFF_ONLY = 'staffOnly';
+export const CUSTOMER_ONLY = 'customerOnly';
 export const PERMISSIONS_META = 'permissions';
 
 /** No login needed. */
@@ -15,6 +16,8 @@ export const Authenticated = () => SetMetadata(IS_AUTHENTICATED, true);
 /** Login/register only: nothing to forge before a session exists. */
 export const SkipCsrf = () => SetMetadata(SKIP_CSRF, true);
 export const PlatformOnly = () => SetMetadata(PLATFORM_ONLY, true);
+/** A customer account (end user of the customer website). */
+export const CustomerOnly = () => SetMetadata(CUSTOMER_ONLY, true);
 /** Any staff member of a shop (no specific permission needed). */
 export const StaffOnly = () => SetMetadata(STAFF_ONLY, true);
 /** Staff user must hold ANY of the listed permissions. */

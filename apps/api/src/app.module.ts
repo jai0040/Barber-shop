@@ -12,12 +12,13 @@ import { ShopsModule } from './shops/shops.module';
 import { FilesModule } from './files/files.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { WorkersModule } from './workers/workers.module';
+import { CustomersModule } from './customers/customers.module';
 import { AuditController } from './audit/audit.controller';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: loadConfig().GLOBAL_RATE_LIMIT }]),
-    CoreModule, FilesModule, AuthModule, RbacModule, PlatformModule, ShopsModule, CatalogModule, WorkersModule,
+    CoreModule, FilesModule, AuthModule, RbacModule, PlatformModule, ShopsModule, CatalogModule, WorkersModule, CustomersModule,
   ],
   controllers: [HealthController, AuditController],
   providers: [ // order matters: rate limit -> who are you -> CSRF -> are you allowed
