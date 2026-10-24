@@ -1,0 +1,8 @@
+{
+  "name": "@barbershop/shared",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": { "build": "tsc -p tsconfig.json", "test": "node --test \"dist/**/*.test.js\"" },
+  "devDependencies": { "typescript": "^5.5.0" }
+}

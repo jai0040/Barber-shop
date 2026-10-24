@@ -1,0 +1,12 @@
+{
+  "name": "barbershop",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run build -w @barbershop/shared && npm run build -w @barbershop/api && npm run build -w @barbershop/web",
+    "dev:api": "npm run start:dev -w @barbershop/api",
+    "dev:web": "npm run dev -w @barbershop/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  }
+}
