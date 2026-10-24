@@ -47,3 +47,9 @@ D1–D13 are in the Phase 0 plan. Added in Phase 2:
 - **D32 Own scope.** `workers.view: own` shows a worker only their profile (others return 404, not 403). Editing profile/photo/login/archive always needs scope `all`;
   the Worker template gets `workers.view: own`. (Existing shops keep their old role data; roles are data, templates only seed NEW shops.)
 - **D33 Worker photos** reuse the Phase 3 image pipeline (decoded + re-encoded, EXIF stripped, 256x256 WebP) and are public only while the worker is active.
+- **D34 Mapping (4C).** `worker_services` is editable from either side (`PUT /workers/:id/services`, `PUT /services/:id/workers`); each call REPLACES the set
+  atomically. Archived workers/services and anything from another shop are rejected (the whole request rolls back). Only managers/owners may change skills.
+- **D35 Availability (4C).** One window per ISO weekday + one optional break, validated in the API and by a DB CHECK. A worker with NO rows is not bookable.
+  "Copy shop hours" copies once (not a live link). Saving hours outside shop hours is allowed but returns warnings; the booking engine always intersects with shop hours.
+- **D36 Time off (4C).** Instants must carry a UTC offset (never interpreted in the server timezone), max one year. Own scope (`workers.update: own`) lets a barber manage only
+  their own availability/time off; skills, profile and archive always need scope `all`.

@@ -1,9 +1,9 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { Auth, RequirePermission } from '../common/decorators';
 import { AuthContext } from '../common/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ServicesService } from './services.service';
-import { categorySchema, categoryUpdateSchema, listSchema, serviceSchema, serviceUpdateSchema } from './catalog.schemas';
+import { categorySchema, categoryUpdateSchema, idList, listSchema, serviceSchema, serviceUpdateSchema } from './catalog.schemas';
 
 // Declared before ServicesController in the module so "/services/categories" is not captured by "/services/:id".
 @Controller('services/categories')
@@ -27,4 +27,6 @@ export class ServicesController {
   update(@Auth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(serviceUpdateSchema)) dto: any) { return this.svc.update(ctx, id, dto); }
   @RequirePermission('services.delete') @Delete(':id') @HttpCode(200) archive(@Auth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.archive(ctx, id); }
   @RequirePermission('services.update') @Post(':id/restore') @HttpCode(200) restore(@Auth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string) { return this.svc.restore(ctx, id); }
+  @RequirePermission('services.update') @Put(':id/workers')
+  setWorkers(@Auth() ctx: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body(new ZodValidationPipe(idList)) dto: any) { return this.svc.setWorkers(ctx, id, dto.ids); }
 }

@@ -8,15 +8,20 @@ import { AuditService } from '../audit/audit.service';
 import { FilesService } from '../files/files.service';
 import { UsersService } from '../rbac/users.service';
 import { hashPassword } from '../auth/auth.service';
+import { toMinutes } from './time';
 
 const nf = (what = 'Worker') => new AppException(404, ErrorCodes.NOT_FOUND, `${what} not found.`);
 const conflict = (m: string) => new AppException(409, ErrorCodes.CONFLICT, m);
+const hhmm = (t: string | null) => (t ? t.slice(0, 5) : null);
 const bad = (m: string) => new AppException(400, ErrorCodes.VALIDATION_FAILED, m);
 
-const SELECT = `SELECT w.*, u.phone AS login_phone, u.email AS login_email, u.status AS login_status, sh.slug
+const SELECT = `SELECT w.*, u.phone AS login_phone, u.email AS login_email, u.status AS login_status, sh.slug,
+  COALESCE((SELECT array_agg(ws.service_id) FROM worker_services ws WHERE ws.worker_id = w.id), '{}') AS service_ids,
+  (SELECT count(*)::int FROM worker_availability a WHERE a.worker_id = w.id) AS avail_days
   FROM workers w LEFT JOIN users u ON u.id = w.user_id JOIN shops sh ON sh.id = w.shop_id`;
 const out = (r: any) => ({
   id: r.id, displayName: r.display_name, status: r.status, archived: !!r.archived_at, userId: r.user_id,
+  serviceIds: r.service_ids ?? [], hasAvailability: r.avail_days > 0,
   login: r.user_id ? { phone: r.login_phone, email: r.login_email, status: r.login_status } : null,
   photoUrl: r.photo_file_id ? `/api/v1/shops/public/${r.slug}/barbers/${r.id}/photo` : null,
 });
@@ -139,6 +144,92 @@ export class WorkersService {
       if (w.user_id) await c.query(`UPDATE users SET status='active', updated_at=now() WHERE id=$1`, [w.user_id]);
       await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.restore', entity: 'worker', entityId: id, ip: ctx.ip });
       return this.fresh(c, id);
+    });
+  }
+
+  // ----- 4C: service mapping (managers/owners only: a barber can't grant themselves skills) -----
+  setServices(ctx: AuthContext, p: Effective, id: string, serviceIds: string[]) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const w = await this.loadFor(c, ctx, p, 'workers.update', id, true);
+      if (w.archived_at) throw conflict('This worker is archived.');
+      await c.query('DELETE FROM worker_services WHERE worker_id=$1', [id]);
+      const ids = [...new Set(serviceIds)];
+      if (ids.length) {
+        const r = await c.query(`INSERT INTO worker_services (worker_id, service_id, shop_id) SELECT $1, s.id, $2 FROM services s WHERE s.id = ANY($3::uuid[]) AND s.archived_at IS NULL`, [id, ctx.shopId, ids]);
+        if (r.rowCount !== ids.length) throw bad('One or more services do not exist.'); // whole request rolls back
+      }
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.services.update', entity: 'worker', entityId: id, oldValues: { serviceIds: w.service_ids }, newValues: { serviceIds: ids }, ip: ctx.ip });
+      return this.fresh(c, id);
+    });
+  }
+
+  // ----- 4C: weekly availability (own scope allowed for one's own profile) -----
+  availability(ctx: AuthContext, p: Effective, id: string) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => { await this.loadFor(c, ctx, p, 'workers.view', id); return this.readAvailability(c, ctx.shopId!, id); });
+  }
+
+  setAvailability(ctx: AuthContext, p: Effective, id: string, body: { useShopHours: true } | { days: any[] }) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const w = await this.loadFor(c, ctx, p, 'workers.update', id);
+      if (w.archived_at) throw conflict('This worker is archived.');
+      const old = (await this.readAvailability(c, ctx.shopId!, id)).days;
+      let days: { weekday: number; isWorking: boolean; startTime?: string | null; endTime?: string | null; breakStart?: string | null; breakEnd?: string | null }[];
+      if ('useShopHours' in body) {
+        const sh = (await c.query('SELECT weekday, is_closed, open_time::text o, close_time::text e FROM shop_hours WHERE shop_id=$1 ORDER BY weekday', [ctx.shopId])).rows;
+        if (sh.length !== 7) throw bad("Set the shop's business hours first, then copy them.");
+        days = sh.map((h) => ({ weekday: h.weekday, isWorking: !h.is_closed, startTime: h.is_closed ? null : hhmm(h.o), endTime: h.is_closed ? null : hhmm(h.e) })); // a copy, not a live link
+      } else days = body.days;
+      await c.query('DELETE FROM worker_availability WHERE worker_id=$1', [id]);
+      await c.query(
+        `INSERT INTO worker_availability (worker_id, shop_id, weekday, is_working, start_time, end_time, break_start, break_end)
+         SELECT $1, $2, x.d, x.w, x.s::time, x.e::time, x.bs::time, x.be::time FROM unnest($3::int[], $4::bool[], $5::text[], $6::text[], $7::text[], $8::text[]) AS x(d, w, s, e, bs, be)`,
+        [id, ctx.shopId, days.map((d) => d.weekday), days.map((d) => d.isWorking), days.map((d) => (d.isWorking ? d.startTime : null)), days.map((d) => (d.isWorking ? d.endTime : null)),
+          days.map((d) => (d.isWorking ? d.breakStart ?? null : null)), days.map((d) => (d.isWorking ? d.breakEnd ?? null : null))]);
+      const now = await this.readAvailability(c, ctx.shopId!, id);
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.availability.update', entity: 'worker', entityId: id, oldValues: old, newValues: now.days, ip: ctx.ip });
+      return now;
+    });
+  }
+
+  private async readAvailability(c: PoolClient, shopId: string, workerId: string) {
+    const rows = (await c.query('SELECT weekday, is_working, start_time::text s, end_time::text e, break_start::text bs, break_end::text be FROM worker_availability WHERE worker_id=$1 ORDER BY weekday', [workerId])).rows;
+    const days = rows.map((r) => ({ weekday: r.weekday, isWorking: r.is_working, startTime: hhmm(r.s), endTime: hhmm(r.e), breakStart: hhmm(r.bs), breakEnd: hhmm(r.be) }));
+    // Advisory only: the booking engine always intersects with shop hours.
+    const sh = new Map((await c.query('SELECT weekday, is_closed, open_time::text o, close_time::text e FROM shop_hours WHERE shop_id=$1', [shopId])).rows.map((h) => [h.weekday, h]));
+    const warnings: { weekday: number; issue: string }[] = [];
+    for (const d of days) {
+      if (!d.isWorking) continue;
+      const h = sh.get(d.weekday);
+      if (!h || h.is_closed) warnings.push({ weekday: d.weekday, issue: 'shop_closed' });
+      else if (toMinutes(d.startTime!) < toMinutes(h.o) || toMinutes(d.endTime!) > toMinutes(h.e)) warnings.push({ weekday: d.weekday, issue: 'outside_shop_hours' });
+    }
+    return { days, warnings };
+  }
+
+  // ----- 4C: time off -----
+  timeOff(ctx: AuthContext, p: Effective, id: string, q: { from?: Date; to?: Date }) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      await this.loadFor(c, ctx, p, 'workers.view', id);
+      const rows = (await c.query(
+        `SELECT id, start_at, end_at, reason FROM worker_time_off WHERE worker_id=$1 AND end_at >= COALESCE($2::timestamptz, now()) AND ($3::timestamptz IS NULL OR start_at <= $3) ORDER BY start_at`, [id, q.from ?? null, q.to ?? null])).rows;
+      return rows.map((r) => ({ id: r.id, startAt: r.start_at, endAt: r.end_at, reason: r.reason }));
+    });
+  }
+  addTimeOff(ctx: AuthContext, p: Effective, id: string, dto: { startAt: Date; endAt: Date; reason?: string }) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      await this.loadFor(c, ctx, p, 'workers.update', id);
+      const r = (await c.query('INSERT INTO worker_time_off (shop_id, worker_id, start_at, end_at, reason, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, start_at, end_at, reason', [ctx.shopId, id, dto.startAt, dto.endAt, dto.reason ?? null, ctx.userId])).rows[0];
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.timeoff.create', entity: 'worker', entityId: id, newValues: { timeOffId: r.id, startAt: dto.startAt, endAt: dto.endAt, reason: dto.reason ?? null }, ip: ctx.ip });
+      return { id: r.id, startAt: r.start_at, endAt: r.end_at, reason: r.reason };
+    });
+  }
+  removeTimeOff(ctx: AuthContext, p: Effective, id: string, timeOffId: string) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      await this.loadFor(c, ctx, p, 'workers.update', id);
+      const r = (await c.query('DELETE FROM worker_time_off WHERE id=$1 AND worker_id=$2 RETURNING start_at, end_at', [timeOffId, id])).rows[0];
+      if (!r) throw nf('Time off entry');
+      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.timeoff.delete', entity: 'worker', entityId: id, oldValues: { timeOffId, startAt: r.start_at, endAt: r.end_at }, ip: ctx.ip });
+      return { deleted: true };
     });
   }
 

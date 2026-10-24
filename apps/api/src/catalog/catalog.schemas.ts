@@ -19,3 +19,5 @@ export const listSchema = z.object({
   includeArchived: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export const idList = z.object({ ids: z.array(uuid).max(100) });
