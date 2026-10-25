@@ -2,9 +2,8 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, Harness } from './harness';
 
-describe('Phase 4: Services, Workers & Availability Engine', () => {
-  let h: Harness;
-  let ownerTokenA: string;
+let h: Harness;
+let ownerTokenA: string;
   let ownerTokenB: string;
   let shopA: { id: string; slug: string };
   let shopB: { id: string; slug: string };
@@ -377,4 +376,3 @@ describe('Phase 4: Services, Workers & Availability Engine', () => {
       assert.equal(future.status, 400);
     });
   });
-});

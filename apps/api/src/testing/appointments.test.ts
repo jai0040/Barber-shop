@@ -279,4 +279,3 @@ let beardId: string;
       assert.equal(crossAdd.status, 404);
     });
   });
-});

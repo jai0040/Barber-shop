@@ -16,7 +16,7 @@ export interface Harness {
 export async function boot(port: number, env: Record<string, string> = {}, extraControllers: any[] = []): Promise<Harness> {
   const pg = new EmbeddedPostgres({
     databaseDir: mkdtempSync(path.join(tmpdir(), 'bs-pg-')), user: 'postgres', password: 'pw', port,
-    persistent: false, createPostgresUser: true, onLog: () => undefined, onError: () => undefined,
+    persistent: false, createPostgresUser: false, onLog: () => undefined, onError: () => undefined,
   });
   await pg.initialise(); await pg.start();
   const uploadDir = mkdtempSync(path.join(tmpdir(), 'bs-up-'));
