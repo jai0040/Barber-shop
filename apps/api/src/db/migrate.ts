@@ -5,7 +5,9 @@ import { PERMISSIONS } from '@barbershop/shared';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../migrations');
 /** Tables the application role may only INSERT/SELECT (append-only ledgers). */
-const APPEND_ONLY = ['audit_logs'];
+const APPEND_ONLY = ['audit_logs', 'appointment_status_history'];
+/** Records that are cancelled/archived but never physically deleted by the application (history & money trail). */
+const NO_DELETE = ['appointments', 'appointment_services'];
 
 export async function migrate(ownerUrl: string, appUrl: string, log: (m: string) => void = console.log) {
   const c = new Client({ connectionString: ownerUrl });
@@ -53,5 +55,6 @@ async function applyGrants(c: Client, appUrl: string) {
   await q(`'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO %I', $1::text`, role);
   await q(`'REVOKE ALL ON schema_migrations FROM %I', $1::text`, role);
   await q(`'REVOKE INSERT, UPDATE, DELETE ON permissions FROM %I', $1::text`, role);
+  for (const t of NO_DELETE) await q(`'REVOKE DELETE ON %I FROM %I', $1::text, $2::text`, t, role);
   for (const t of APPEND_ONLY) await q(`'REVOKE UPDATE, DELETE ON %I FROM %I', $1::text, $2::text`, t, role);
 }

@@ -72,3 +72,18 @@ D1–D13 are in the Phase 0 plan. Added in Phase 2:
   Phase 6 widens this to "customers I have served". Out-of-scope records are 404 (existence is not revealed), and duplicate-phone errors don't disclose the other record to own-scope staff.
 - **D43 Customer self-service runs inside ONE shop's RLS context** (resolved from the slug) with every query pinned to the caller's own account; there is no cross-shop customer listing
   (the UI asks per shop). Customers are never readable through the public (`public_read`) scope.
+
+## Phase 6
+- **D44 Double-booking is prevented by PostgreSQL itself (6A).** An EXCLUDE constraint (`appointments_no_overlap`, btree_gist) forbids two ACTIVE appointments
+  (`booked/confirmed/checked_in/in_service`) for one worker whose `[start,end)` ranges overlap. Back-to-back is allowed; unassigned appointments never conflict;
+  completed/cancelled/no_show/rescheduled free the slot. It holds under concurrent requests and for any code path (tested: 10 simultaneous bookings => exactly one wins).
+  The application still pre-checks for friendly errors; the constraint is the final authority. Assigning a worker later, moving, or re-activating also go through it.
+- **D45 CORRECTION of D4 (add-on conflicts).** D4 said an add-on that collides with the next appointment would be "allowed but flagged". That is impossible with a strict
+  constraint on `end_at`, and the constraint is the better guarantee. Resolution (implemented in 6C): an add-on is ALWAYS accepted (the customer is already in the chair; the bill grows),
+  but the calendar block (`end_at`) is extended only as far as the barber is free; any remaining minutes are recorded as an overrun and flagged to the admin.
+- **D46 Snapshots are enforced by the database (6A).** `appointment_services` copies service name, price and duration at booking/add time, and a trigger rejects any later change to
+  them (only `removed_at` may change). A catalog price change from Rs300 to Rs350 therefore cannot alter an existing appointment or, later, its invoice.
+- **D47 Reschedule = new appointment.** Rescheduling creates a NEW appointment pointing at the old one (`rescheduled_from_id`); the old one becomes `rescheduled` and frees its slot.
+  Add-ons, by contrast, are extra rows on the SAME appointment.
+- **D48 No physical deletion / append-only history.** The application database role cannot DELETE appointments or appointment services, nor UPDATE/DELETE
+  `appointment_status_history` or `audit_logs`. Cancellation records who cancelled and whether it was the customer (needed for the cooldown rule in 6D).
