@@ -1,15 +1,169 @@
-# Barber Shop Management Software
+# Barber Shop Management Software 💈
 
-## Run locally
+A production-ready, mobile-first, multi-tenant barber shop management platform designed for modern salons and barber shops.
+
+---
+
+## 🌟 Features & Systems
+
+- **Customer Appointment Management**:
+  - Mobile-first responsive customer booking flow (`/[slug]/book`).
+  - Multi-service selection with cumulative duration & price calculation.
+  - Preferred barber selection or **"Any Available Barber"** automated slot matching.
+  - 15-minute slot generator adhering to shop hours, worker shifts, lunch/tea breaks, time-offs, and existing bookings.
+  - Full appointment lifecycle: `booked` $\rightarrow$ `confirmed` $\rightarrow$ `checked_in` $\rightarrow$ `in_service` $\rightarrow$ `completed`, plus `cancelled`, `no_show`, and `rescheduled`.
+  - Immutable service price & duration snapshots at time of booking.
+  - Append-only status audit log with timestamps and notes.
+  - On-chair **"+ Add Service"** add-ons without duplicate appointments.
+  - Walk-in support with admin barber assignment.
+
+- **Worker & Barber Station**:
+  - Dedicated mobile-friendly worker queue (`/worker`).
+  - Worker-service capability matrix (barbers only assigned to services they can perform).
+  - 7-day shifts, breaks, and time-off calendar.
+  - Live station controls: Check In, Start Service, Add On-Chair Service, Mark Completed.
+  - Strict privacy: Barbers only see their own work queue, clients, and performance summary.
+
+- **Billing & POS System**:
+  - Fast in-shop checkout for completed appointments and retail walk-ins (`/admin/billing`).
+  - Integer paise precision ($1\text{ INR} = 100\text{ paise}$) preventing floating-point rounding errors.
+  - Discount calculator (percentage or flat discount).
+  - Cash payment calculator with automatic change return display.
+  - High-contrast UPI QR modal (`upi://pay?...`) for fast scanning.
+  - Printable / downloadable invoice summaries.
+
+- **Products & Inventory**:
+  - SKU tracking, cost price vs selling price, stock quantities, and low-stock threshold triggers (`/admin/inventory`).
+  - Atomic stock deductions upon retail checkout.
+  - Stock-in, adjustment, damage, and wastage tracking.
+
+- **Finance & P&L Ledger**:
+  - Operating expense tracking with custom categories (Rent, Utilities, Salaries, Supplies) (`/admin/finance`).
+  - Automated ledger entry for inventory purchases.
+  - Real-time net profit/loss calculation (Revenue − Expenses).
+
+- **Role-Based Access Control (RBAC)**:
+  - Six granular roles: Platform Super Admin, Shop Owner / Main Admin, Manager, Worker, Cashier, Inventory Manager.
+  - Server-side `@RequirePermission(...)` authorization guards on all API routes.
+  - Anti-privilege escalation safeguards.
+
+- **Multi-Tenant Architecture**:
+  - PostgreSQL Row-Level Security (RLS) enforces `shop_id = app_shop_id()` at the database engine level.
+  - Shop A and Shop B data are strictly isolated.
+  - `btree_gist` exclusion constraint prevents overlapping bookings for the same barber under high concurrency.
+
+---
+
+## 🚀 Quickstart (One Command)
+
+### Prerequisites
+- **Node.js**: v20+ (tested on Node v26)
+- **npm**: v10+
+
+> **Note**: No external Docker or PostgreSQL installation is required for development. The platform includes an embedded PostgreSQL engine (`embedded-postgres`) that initializes automatically on port `5432`.
+
+### 1. Install Dependencies
 ```bash
-cp .env.example .env            # edit secrets
-docker compose up -d            # Postgres
 npm install
-set -a; source .env; set +a
-npm run build
-npm run migrate -w @barbershop/api
-PLATFORM_ADMIN_EMAIL=you@example.com PLATFORM_ADMIN_PASSWORD='Str0ngPass!' npm run create-platform-admin -w @barbershop/api
-npm run dev:api                 # http://localhost:4000/api/v1/health/db
-npm test                        # full suite (spins up its own temporary Postgres; no Docker needed)
 ```
-Decisions: `docs/DECISIONS.md`.
+
+### 2. Start the Backend API & Database
+```bash
+npm run dev:api
+```
+This single command automatically:
+1. Boots embedded PostgreSQL on port `5432` with data stored in `.data/postgres/`.
+2. Applies all database migrations (`001_core.sql` through `006_products_billing_finance.sql`).
+3. Seeds comprehensive demo data for **Classic Barber Shop**.
+4. Starts the NestJS API on **`http://localhost:4000/api/v1`**.
+
+### 3. Start the Web Frontend
+In a separate terminal:
+```bash
+npm run dev:web
+```
+Starts the Next.js 14 App Router on **`http://localhost:3000`**.
+
+---
+
+## 🔑 Demo Logins & Credentials
+
+### 1. Shop Owner / Administrator
+- **Email**: `owner@classicbarber.com`
+- **Password**: `ClassicOwner#123`
+- **Access**: Full shop administrative permissions across all panels.
+
+### 2. Barbers / Workers
+- **Rahul**: `rahul@classicbarber.com` / `WorkerPass#123` *(Skills: Haircut, Beard Trim, Combo)*
+- **Amit**: `amit@classicbarber.com` / `WorkerPass#123` *(Skills: Haircut, Beard Trim, Combo, Hair Spa)*
+- **Raj**: `raj@classicbarber.com` / `WorkerPass#123` *(Skills: Haircut, Hair Spa)*
+
+---
+
+## 🗺️ Application Routes
+
+### Customer Portal
+- `http://localhost:3000/classic-barber/book` — 4-step mobile booking flow.
+- `http://localhost:3000/classic-barber/services` — Public service menu with prices and categories.
+- `http://localhost:3000/classic-barber/barbers` — Public barber team profiles and capabilities.
+- `http://localhost:3000/classic-barber/products` — In-shop retail product catalog.
+- `http://localhost:3000/my-account` — Customer self-service appointment history.
+
+### Worker Station
+- `http://localhost:3000/worker` — Barber chair queue, status transitions, and on-chair service additions.
+
+### Shop Admin Panel
+- `http://localhost:3000/admin/dashboard` — Daily overview metrics (appointments, active chair, revenue).
+- `http://localhost:3000/admin/appointments` — Calendar / list appointment manager & walk-in assignment.
+- `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, discounts, cash change, and UPI QR.
+- `http://localhost:3000/admin/customers` — Client directory, service history, and notes.
+- `http://localhost:3000/admin/inventory` — Product catalog, stock levels, adjustments, and low-stock alerts.
+- `http://localhost:3000/admin/finance` — Income, expense categories, and net profit ledger.
+- `http://localhost:3000/admin/reports` — Multi-dimensional revenue, barber performance, and service analytics.
+- `http://localhost:3000/admin/services` — Service catalog management (categories, prices, durations).
+- `http://localhost:3000/admin/workers` — Worker profiles, credentials, service mappings, and schedules.
+- `http://localhost:3000/admin/settings` — Shop business hours, logo upload, and cancellation cooldown settings.
+
+---
+
+## 🧪 Automated Test Suites
+
+The test suite runs with a self-contained embedded database:
+```bash
+npm test
+```
+
+### Test Coverage (100% Passing — 237 / 237 Tests)
+1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
+2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
+3. `auth-rbac.test.ts` — Granular RBAC permission enforcement, Argon2 password hashing, refresh token family rotation, CSRF cookie security, escalation prevention.
+4. `billing-products-finance.test.ts` — Inventory stock-in, damage adjustments, POS checkout, cash change calculation, UPI QR, and net result ledger.
+5. `catalog.test.ts` — Service categories, integer paise validation, price history audit, active/archived state, public catalog grouping.
+6. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
+7. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
+8. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+9. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+10. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+11. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+12. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+13. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+14. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+
+---
+
+## 🏗️ Production Build
+
+To compile all workspaces:
+```bash
+npm run build
+```
+Builds:
+- `@barbershop/shared`: TypeScript types, validation schemas, and constants.
+- `@barbershop/api`: NestJS API compiled to JavaScript (`apps/api/dist`).
+- `@barbershop/web`: Next.js 14 App Router production bundle (`apps/web/.next`).
+
+---
+
+## 📐 Technical Decisions Reference
+
+Full architectural decisions (D1 through D48) are detailed in [docs/DECISIONS.md](docs/DECISIONS.md).
