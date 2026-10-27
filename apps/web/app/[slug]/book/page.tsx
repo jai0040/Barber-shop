@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -19,7 +19,7 @@ import CustomerBottomNav from '@/components/customer/BottomNav';
 import { apiRequest, formatINR, getSession } from '@/lib/api';
 import { AppointmentItem, ServiceItem, TimeSlot, WorkerItem } from '@barbershop/shared';
 
-export default function BookingWizardPage() {
+function BookingWizardContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -601,5 +601,19 @@ export default function BookingWizardPage() {
 
       <CustomerBottomNav slug={slug} />
     </div>
+  );
+}
+
+export default function BookingWizardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <BookingWizardContent />
+    </Suspense>
   );
 }

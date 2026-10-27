@@ -8,7 +8,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { loadConfig } from '../config';
 import { WorkersService } from './workers.service';
 import { AvailabilityService } from './availability.service';
-import { addLoginSchema, availabilitySchema, createWorkerSchema, eligibleSchema, idsSchema, listWorkersSchema, timeOffListSchema, timeOffSchema, updateWorkerSchema } from './workers.schemas';
+import { addLoginSchema, availabilitySchema, createWorkerSchema, eligibleSchema, idsSchema, listWorkersSchema, scheduleSchema, timeOffListSchema, timeOffSchema, updateWorkerSchema } from './workers.schemas';
 
 const upload = () => FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: loadConfig().MAX_UPLOAD_MB * 1024 * 1024, files: 1, fields: 0 } });
 const need = (f?: Express.Multer.File) => { if (!f) throw new BadRequestException({ message: 'Please choose an image file (form field "file").', code: ErrorCodes.VALIDATION_FAILED }); return f.buffer; };
@@ -39,6 +39,8 @@ export class WorkersController {
   @RequirePermission('workers.view') @Get(':id/availability') availability(@Auth() ctx: AuthContext, @Perms() p: Effective, @ID() id: string) { return this.svc.availability(ctx, p, id); }
   @RequirePermission('workers.update') @Put(':id/availability')
   setAvailability(@Auth() ctx: AuthContext, @Perms() p: Effective, @ID() id: string, @Body(new ZodValidationPipe(availabilitySchema)) dto: any) { return this.svc.setAvailability(ctx, p, id, dto); }
+  @RequirePermission('workers.update') @Put(':id/schedule')
+  setSchedule(@Auth() ctx: AuthContext, @Perms() p: Effective, @ID() id: string, @Body(new ZodValidationPipe(scheduleSchema)) dto: any) { return this.svc.setAvailability(ctx, p, id, dto); }
   @RequirePermission('workers.view') @Get(':id/time-off')
   timeOff(@Auth() ctx: AuthContext, @Perms() p: Effective, @ID() id: string, @Query(new ZodValidationPipe(timeOffListSchema)) q: any) { return this.svc.timeOff(ctx, p, id, q); }
   @RequirePermission('workers.update') @Post(':id/time-off')

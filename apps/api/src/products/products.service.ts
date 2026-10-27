@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { ErrorCodes, InventoryTransactionItem, ProductCategory, ProductItem } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext } from '../common/types';
@@ -73,21 +74,23 @@ export class ProductsService {
     });
   }
 
-  getProduct(ctx: AuthContext, id: string): Promise<ProductItem> {
-    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const row = (await c.query(
-        `SELECT p.id, p.category_id, pc.name AS category_name, p.name, p.sku,
-                p.selling_price_paise, p.cost_price_paise, p.stock_quantity,
-                p.low_stock_threshold, p.supplier_name, p.status, p.created_at, p.updated_at
-         FROM products p
-         LEFT JOIN product_categories pc ON pc.id = p.category_id
-         WHERE p.id = $1 AND p.shop_id = $2`,
-        [id, ctx.shopId]
-      )).rows[0];
+  private async loadProduct(c: PoolClient, shopId: string, id: string): Promise<ProductItem> {
+    const row = (await c.query(
+      `SELECT p.id, p.category_id, pc.name AS category_name, p.name, p.sku,
+              p.selling_price_paise, p.cost_price_paise, p.stock_quantity,
+              p.low_stock_threshold, p.supplier_name, p.status, p.created_at, p.updated_at
+       FROM products p
+       LEFT JOIN product_categories pc ON pc.id = p.category_id
+       WHERE p.id = $1 AND p.shop_id = $2`,
+      [id, shopId]
+    )).rows[0];
 
-      if (!row) throw notFound();
-      return this.mapProductRow(row);
-    });
+    if (!row) throw notFound();
+    return this.mapProductRow(row);
+  }
+
+  getProduct(ctx: AuthContext, id: string): Promise<ProductItem> {
+    return this.db.tenant({ shopId: ctx.shopId }, (c) => this.loadProduct(c, ctx.shopId!, id));
   }
 
   createProduct(
@@ -146,7 +149,7 @@ export class ProductsService {
           ip: ctx.ip,
         });
 
-        return this.getProduct(ctx, productId);
+        return this.loadProduct(c, ctx.shopId!, productId);
       } catch (e) {
         if (isUniqueViolation(e)) throw conflict('A product with this SKU already exists in this shop.');
         throw e;
@@ -234,7 +237,7 @@ export class ProductsService {
         }
       }
 
-      return this.getProduct(ctx, id);
+      return this.loadProduct(c, ctx.shopId!, id);
     });
   }
 
@@ -311,7 +314,7 @@ export class ProductsService {
         ip: ctx.ip,
       });
 
-      return this.getProduct(ctx, dto.productId);
+      return this.loadProduct(c, ctx.shopId!, dto.productId);
     });
   }
 
@@ -354,7 +357,7 @@ export class ProductsService {
         ip: ctx.ip,
       });
 
-      return this.getProduct(ctx, dto.productId);
+      return this.loadProduct(c, ctx.shopId!, dto.productId);
     });
   }
 

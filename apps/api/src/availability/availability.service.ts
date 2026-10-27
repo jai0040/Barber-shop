@@ -41,6 +41,8 @@ export class AvailabilityService {
       )).rows[0];
       if (!shop) throw notFound();
 
+      await c.query(`SELECT set_config('app.shop_id', $1, true)`, [shop.id]);
+
       const advanceDays = shop.settings?.advance_booking_days ?? 30;
       const targetDate = new Date(query.date + 'T00:00:00Z');
       const now = new Date();

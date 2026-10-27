@@ -12,7 +12,7 @@ const login = async (identifier: string, password = pw) => h.call('POST', '/auth
 const tokenOf = async (identifier: string) => (await login(identifier)).body.data.accessToken as string;
 
 before(async () => {
-  h = await boot(54341);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await tokenOf('root@platform.test');

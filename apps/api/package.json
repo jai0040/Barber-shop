@@ -7,9 +7,10 @@
     "start:dev": "ts-node-dev --respawn src/main.ts",
     "start": "node dist/main.js",
     "migrate": "node dist/db/migrate-cli.js",
+    "seed-demo": "node dist/cli-seed-demo.js",
     "create-platform-admin": "node dist/cli-create-platform-admin.js",
     "lint": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test \"dist/**/*.test.js\""
+    "test": "node --test --test-concurrency=1 \"dist/**/*.test.js\""
   },
   "dependencies": {
     "@barbershop/shared": "*",

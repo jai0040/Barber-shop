@@ -12,7 +12,7 @@ const png = (w = 600, hh = 400) => sharp({ create: { width: w, height: hh, chann
 const loginStatus = async (i: string) => (await h.call('POST', '/auth/login', { body: { identifier: i, password: pw } })).status;
 
 before(async () => {
-  h = await boot(54346);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');

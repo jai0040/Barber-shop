@@ -23,7 +23,7 @@ let beardId: string;
   };
 
   before(async () => {
-    h = await boot(25436);
+    h = await boot();
 
     const onboard = async (slug: string, name: string, email: string) => {
       const s = (await h.ownerPool.query(
@@ -47,6 +47,17 @@ let beardId: string;
       await h.ownerPool.query(
         `INSERT INTO user_roles (user_id, shop_id, role_id) VALUES ($1, $2, $3)`,
         [u.id, s.id, ownerRoleId]
+      );
+
+      await h.ownerPool.query(
+        `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions`,
+        [ownerRoleId, s.id]
+      );
+
+      const workerRoleId = r.find((x) => x.system_key === 'worker').id;
+      await h.ownerPool.query(
+        `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions WHERE key IN ('dashboard.view', 'appointments.view', 'appointments.update', 'appointments.create', 'customers.view')`,
+        [workerRoleId, s.id]
       );
 
       // Business hours: Monday 10:00 to 20:00
@@ -86,15 +97,29 @@ let beardId: string;
     // Create workers Rahul and Amit
     const w1 = await h.call('POST', '/workers', {
       token: ownerTokenA,
-      body: { displayName: 'Rahul', phone: '+919876543101', email: 'rahul@classic.com', serviceIds: [haircutId, beardId] },
+      body: {
+        displayName: 'Rahul',
+        login: { email: 'rahul@classic.com', password: 'Password!1' },
+      },
     });
     rahulId = w1.body.data.id;
+    await h.call('PUT', `/workers/${rahulId}/services`, {
+      token: ownerTokenA,
+      body: { ids: [haircutId, beardId] },
+    });
 
     const w2 = await h.call('POST', '/workers', {
       token: ownerTokenA,
-      body: { displayName: 'Amit', phone: '+919876543102', email: 'amit@classic.com', serviceIds: [haircutId, beardId] },
+      body: {
+        displayName: 'Amit',
+        login: { email: 'amit@classic.com', password: 'Password!1' },
+      },
     });
     amitId = w2.body.data.id;
+    await h.call('PUT', `/workers/${amitId}/services`, {
+      token: ownerTokenA,
+      body: { ids: [haircutId, beardId] },
+    });
 
     // Rahul schedule: Mon 10:00-18:00
     await h.call('PUT', `/workers/${rahulId}/schedule`, {

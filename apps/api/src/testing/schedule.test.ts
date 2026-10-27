@@ -14,7 +14,7 @@ const MON = '2030-01-07'; // a Monday
 const at = (d: string, t: string) => `${d}T${t}:00+05:30`;
 
 before(async () => {
-  h = await boot(54347);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');
@@ -37,7 +37,7 @@ before(async () => {
   }
   W.Bhavin = (await call('POST', '/workers', T.ownerB, { displayName: 'Bhavin' })).body.data.id;
 });
-after(() => h?.close());
+after(async () => { await h?.close(); });
 
 describe('4C: worker <-> service mapping', () => {
   it('starts empty; owner and manager can set it; cashier and plain workers cannot', async () => {

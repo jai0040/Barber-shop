@@ -11,7 +11,7 @@ const register = async (name: string, phone: string) => { await h.call('POST', '
 const mk = (t: string, name: string, phone: string, extra: object = {}) => call('POST', '/customers', t, { name, phone, ...extra });
 
 before(async () => {
-  h = await boot(54349);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');

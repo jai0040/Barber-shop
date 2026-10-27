@@ -11,8 +11,8 @@ let haircutId: string;
 let beardOilId: string;
 let invoiceId: string;
 
-  before(async () => {
-    h = await boot(25437);
+before(async () => {
+  h = await boot();
 
     const onboard = async (slug: string, name: string, email: string) => {
       const s = (await h.ownerPool.query(
@@ -38,6 +38,11 @@ let invoiceId: string;
         [u.id, s.id, ownerRoleId]
       );
 
+      await h.ownerPool.query(
+        `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions`,
+        [ownerRoleId, s.id]
+      );
+
       const { TokenService } = await import('../core/token.service');
       const tokens = new TokenService();
       const token = tokens.signAccess({ id: u.id, type: 'staff', name: u.name, shop_id: s.id } as any);
@@ -61,7 +66,7 @@ let invoiceId: string;
   });
 
   after(async () => {
-    await h.close();
+    await h?.close();
   });
 
   describe('Product & Inventory Management (Rules 22, 24, 25, 50, 51)', () => {

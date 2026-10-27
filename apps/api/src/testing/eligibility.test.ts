@@ -16,7 +16,7 @@ const at = (d: string, t: string) => `${d}T${t}:00+05:30`;
 // Demo shop: Mon-Sat 10:00-21:00.
 //  Rahul: Haircut+Beard, Mon-Sat 10-21, break 13-14      Amit: everything, Mon-Fri 12-20      Raj: Haircut, Mon-Sat 10-21, off Mon 15-18
 before(async () => {
-  h = await boot(54348);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');
@@ -46,7 +46,7 @@ before(async () => {
   await call('PUT', `/workers/${W.Bhavin}/services`, T.ownerB, { ids: [S.haircutB] });
   await call('PUT', `/workers/${W.Bhavin}/availability`, T.ownerB, { useShopHours: true });
 });
-after(() => h?.close());
+after(async () => { await h?.close(); });
 
 const elig = async (names: string[], start?: string, t = T.ownerA) => {
   const r = await call('GET', `/workers/eligible?serviceIds=${names.map((n) => S[n]).join(',')}${start ? `&start=${encodeURIComponent(start)}` : ''}`, t);

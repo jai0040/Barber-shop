@@ -55,6 +55,9 @@ export class AppointmentsService {
       const shop = (await c.query(`SELECT id, name, slug FROM shops WHERE slug = $1 AND status = 'active'`, [slug])).rows[0];
       if (!shop) throw notFound('Shop not found.');
 
+      // Scope this connection's tenant context to this shop for appointment and customer creation
+      await c.query(`SELECT set_config('app.shop_id', $1, true)`, [shop.id]);
+
       // 2. Validate availability using slot engine
       const slotResult = await this.availability.calculateSlots(slug, {
         date: dto.date,
@@ -110,16 +113,24 @@ export class AppointmentsService {
       const endTime = minToTime(startMin + totalDuration);
 
       // 5. Create appointment
-      const aptRes = await c.query(
-        `INSERT INTO appointments (
-           shop_id, customer_id, worker_id, date, start_time, end_time,
-           status, notes, is_walk_in, total_amount_paise
-         )
-         VALUES ($1, $2, $3, $4::date, $5::time, $6::time, 'booked', $7, false, $8)
-         RETURNING id`,
-        [shop.id, customerId, assignedWorkerId, dto.date, dto.startTime, endTime, dto.notes ?? null, totalAmount]
-      );
-      const appointmentId = aptRes.rows[0].id;
+      let appointmentId: string;
+      try {
+        const aptRes = await c.query(
+          `INSERT INTO appointments (
+             shop_id, customer_id, worker_id, date, start_time, end_time,
+             status, notes, is_walk_in, total_amount_paise
+           )
+           VALUES ($1, $2, $3, $4::date, $5::time, $6::time, 'booked', $7, false, $8)
+           RETURNING id`,
+          [shop.id, customerId, assignedWorkerId, dto.date, dto.startTime, endTime, dto.notes ?? null, totalAmount]
+        );
+        appointmentId = aptRes.rows[0].id;
+      } catch (err: any) {
+        if (err.code === '23P01' || err.code === '23505') {
+          throw badRequest('The selected time slot is no longer available. Please select another slot.');
+        }
+        throw err;
+      }
 
       // 6. Snapshot appointment services
       for (const s of services) {

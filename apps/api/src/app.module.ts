@@ -13,12 +13,20 @@ import { FilesModule } from './files/files.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { WorkersModule } from './workers/workers.module';
 import { CustomersModule } from './customers/customers.module';
+import { AvailabilityModule } from './availability/availability.module';
+import { AppointmentsModule } from './appointments/appointments.module';
+import { ProductsModule } from './products/products.module';
+import { BillingModule } from './billing/billing.module';
+import { FinanceModule } from './finance/finance.module';
+import { ReportsModule } from './reports/reports.module';
 import { AuditController } from './audit/audit.controller';
 
 @Module({
   imports: [
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: loadConfig().GLOBAL_RATE_LIMIT }]),
-    CoreModule, FilesModule, AuthModule, RbacModule, PlatformModule, ShopsModule, CatalogModule, WorkersModule, CustomersModule,
+    CoreModule, FilesModule, AuthModule, RbacModule, PlatformModule, ShopsModule,
+    CatalogModule, WorkersModule, CustomersModule, AvailabilityModule,
+    AppointmentsModule, ProductsModule, BillingModule, FinanceModule, ReportsModule,
   ],
   controllers: [HealthController, AuditController],
   providers: [ // order matters: rate limit -> who are you -> CSRF -> are you allowed

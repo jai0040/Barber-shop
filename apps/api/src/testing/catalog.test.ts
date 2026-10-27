@@ -9,7 +9,7 @@ const login = async (i: string) => (await h.call('POST', '/auth/login', { body: 
 const call = (m: string, p: string, token?: string, body?: unknown) => h.call(m, p, { token, body });
 
 before(async () => {
-  h = await boot(54345);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');

@@ -18,9 +18,34 @@ export class PublicCatalogController {
       const shop = (await c.query('SELECT id FROM shops WHERE slug=$1', [slug])).rows[0];
       if (!shop) throw new AppException(404, ErrorCodes.NOT_FOUND, 'Shop not found.');
       const cats = (await c.query('SELECT id, name FROM service_categories WHERE shop_id=$1 ORDER BY sort_order, lower(name)', [shop.id])).rows;
-      const svcs = (await c.query('SELECT id, category_id, name, description, price_paise, duration_min FROM services WHERE shop_id=$1 ORDER BY lower(name)', [shop.id])).rows;
+      const svcs = (await c.query('SELECT id, category_id, name, description, price_paise, duration_min FROM services WHERE shop_id=$1 AND status = \'active\' AND archived_at IS NULL ORDER BY lower(name)', [shop.id])).rows;
       const shape = (s: any) => ({ id: s.id, name: s.name, description: s.description, pricePaise: s.price_paise, durationMin: s.duration_min });
+      const serviceList = svcs.map(shape);
       return {
+        services: serviceList,
+        categories: cats.map((k) => ({ id: k.id, name: k.name, services: svcs.filter((s) => s.category_id === k.id).map(shape) })).filter((g) => g.services.length),
+        uncategorized: svcs.filter((s) => !s.category_id).map(shape),
+      };
+    });
+  }
+}
+
+@Public()
+@Controller('services/public')
+export class PublicServicesCatalogController {
+  constructor(private db: Db) {}
+
+  @Get(':slug')
+  services(@Param('slug', new ZodValidationPipe(slugParam)) slug: string) {
+    return this.db.tenant({ publicRead: true }, async (c) => {
+      const shop = (await c.query('SELECT id FROM shops WHERE slug=$1', [slug])).rows[0];
+      if (!shop) throw new AppException(404, ErrorCodes.NOT_FOUND, 'Shop not found.');
+      const cats = (await c.query('SELECT id, name FROM service_categories WHERE shop_id=$1 ORDER BY sort_order, lower(name)', [shop.id])).rows;
+      const svcs = (await c.query('SELECT id, category_id, name, description, price_paise, duration_min FROM services WHERE shop_id=$1 AND status = \'active\' AND archived_at IS NULL ORDER BY lower(name)', [shop.id])).rows;
+      const shape = (s: any) => ({ id: s.id, name: s.name, description: s.description, pricePaise: s.price_paise, durationMin: s.duration_min });
+      const serviceList = svcs.map(shape);
+      return {
+        services: serviceList,
         categories: cats.map((k) => ({ id: k.id, name: k.name, services: svcs.filter((s) => s.category_id === k.id).map(shape) })).filter((g) => g.services.length),
         uncategorized: svcs.filter((s) => !s.category_id).map(shape),
       };

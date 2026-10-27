@@ -16,7 +16,15 @@ export const createServiceSchema = z.object({
   name: z.string().trim().min(1, 'Service name is required').max(100),
   description: z.string().trim().max(1000).nullable().optional(),
   pricePaise: z.number().int().min(0, 'Price must be non-negative (in paise)'),
-  durationMinutes: z.number().int().min(5, 'Duration must be at least 5 minutes').max(480, 'Duration cannot exceed 8 hours'),
+  durationMin: z.number().int().min(5, 'Duration must be at least 5 minutes').max(480, 'Duration cannot exceed 8 hours').optional(),
+  durationMinutes: z.number().int().min(5, 'Duration must be at least 5 minutes').max(480, 'Duration cannot exceed 8 hours').optional(),
+}).transform((v, ctx) => {
+  const d = v.durationMinutes ?? v.durationMin;
+  if (!d) {
+    ctx.addIssue({ code: 'custom', message: 'Duration is required', path: ['durationMinutes'] });
+    return z.NEVER;
+  }
+  return { ...v, durationMinutes: d };
 });
 
 export const updateServiceSchema = z.object({
@@ -24,6 +32,10 @@ export const updateServiceSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   pricePaise: z.number().int().min(0).optional(),
+  durationMin: z.number().int().min(5).max(480).optional(),
   durationMinutes: z.number().int().min(5).max(480).optional(),
   isActive: z.boolean().optional(),
+}).transform((v) => {
+  const d = v.durationMinutes ?? v.durationMin;
+  return d !== undefined ? { ...v, durationMinutes: d } : v;
 });

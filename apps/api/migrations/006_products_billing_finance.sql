@@ -17,7 +17,7 @@ CREATE INDEX product_categories_shop_idx ON product_categories (shop_id);
 CREATE TABLE products (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id             uuid NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-  category_id         uuid REFERENCES product_categories(id, shop_id) ON DELETE SET NULL,
+  category_id         uuid REFERENCES product_categories(id) ON DELETE SET NULL,
   name                text NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100),
   sku                 text NOT NULL CHECK (length(trim(sku)) BETWEEN 2 AND 50),
   selling_price_paise int NOT NULL CHECK (selling_price_paise >= 0),
@@ -154,7 +154,7 @@ END $$;
 
 -- Public read for products (view-only on customer website)
 CREATE POLICY public_read ON product_categories FOR SELECT
-  USING (app_is_public() AND is_active AND EXISTS (SELECT 1 FROM shops s WHERE s.id = shop_id AND s.status = 'active'));
+  USING (app_is_public() AND is_active AND EXISTS (SELECT 1 FROM shops s WHERE s.id = product_categories.shop_id AND s.status = 'active'));
 
 CREATE POLICY public_read ON products FOR SELECT
-  USING (app_is_public() AND status = 'active' AND EXISTS (SELECT 1 FROM shops s WHERE s.id = shop_id AND s.status = 'active'));
+  USING (app_is_public() AND status = 'active' AND EXISTS (SELECT 1 FROM shops s WHERE s.id = products.shop_id AND s.status = 'active'));

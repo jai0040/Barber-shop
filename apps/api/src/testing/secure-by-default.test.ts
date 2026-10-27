@@ -11,7 +11,7 @@ import { boot, Harness } from './harness';
 
 let h: Harness; let token: string;
 before(async () => {
-  h = await boot(54344, {}, [Forgotten, DeclaredPublic]);
+  h = await boot(undefined, {}, [Forgotten, DeclaredPublic]);
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Root', email: 'root@p.test', password: 'Passw0rd!x' });
   token = (await h.call('POST', '/auth/login', { body: { identifier: 'root@p.test', password: 'Passw0rd!x' } })).body.data.accessToken;

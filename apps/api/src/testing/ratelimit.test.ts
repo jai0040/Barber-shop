@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { boot, Harness } from './harness';
 
 let h: Harness;
-before(async () => { h = await boot(54342, { LOGIN_RATE_LIMIT: '3' }); });
+before(async () => { h = await boot(undefined, { LOGIN_RATE_LIMIT: '3' }); });
 after(() => h?.close());
 
 it('login endpoint is rate limited (429 after the limit)', async () => {

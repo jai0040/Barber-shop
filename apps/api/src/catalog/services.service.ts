@@ -25,14 +25,14 @@ export class ServicesService {
   // ---------- categories ----------
   listCategories(ctx: AuthContext) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) =>
-      (await c.query(`SELECT c.id, c.name, c.sort_order AS "sortOrder",
+      (await c.query(`SELECT c.id, c.name, c.sort_order AS "sortOrder", c.sort_order AS "displayOrder",
                              (SELECT count(*)::int FROM services s WHERE s.category_id = c.id AND s.archived_at IS NULL) AS "serviceCount"
                         FROM service_categories c ORDER BY c.sort_order, lower(c.name)`)).rows);
   }
   createCategory(ctx: AuthContext, dto: { name: string; sortOrder?: number }) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       try {
-        const r = (await c.query('INSERT INTO service_categories (shop_id, name, sort_order) VALUES ($1,$2,$3) RETURNING id, name, sort_order AS "sortOrder"', [ctx.shopId, dto.name, dto.sortOrder ?? 0])).rows[0];
+        const r = (await c.query('INSERT INTO service_categories (shop_id, name, sort_order) VALUES ($1,$2,$3) RETURNING id, name, sort_order AS "sortOrder", sort_order AS "displayOrder"', [ctx.shopId, dto.name, dto.sortOrder ?? 0])).rows[0];
         await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'category.create', entity: 'service_category', entityId: r.id, newValues: dto, ip: ctx.ip });
         return r;
       } catch (e) { throw isUniqueViolation(e) ? dup('A category with this name already exists.') : e; }
@@ -43,7 +43,7 @@ export class ServicesService {
       const old = (await c.query('SELECT name, sort_order FROM service_categories WHERE id=$1 FOR UPDATE', [id])).rows[0];
       if (!old) throw nf('Category');
       try {
-        const r = (await c.query('UPDATE service_categories SET name = COALESCE($2, name), sort_order = COALESCE($3, sort_order) WHERE id=$1 RETURNING id, name, sort_order AS "sortOrder"', [id, dto.name ?? null, dto.sortOrder ?? null])).rows[0];
+        const r = (await c.query('UPDATE service_categories SET name = COALESCE($2, name), sort_order = COALESCE($3, sort_order) WHERE id=$1 RETURNING id, name, sort_order AS "sortOrder", sort_order AS "displayOrder"', [id, dto.name ?? null, dto.sortOrder ?? null])).rows[0];
         await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'category.update', entity: 'service_category', entityId: id, oldValues: { name: old.name, sortOrder: old.sort_order }, newValues: dto, ip: ctx.ip });
         return r;
       } catch (e) { throw isUniqueViolation(e) ? dup('A category with this name already exists.') : e; }

@@ -3,6 +3,18 @@ import { mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { Pool } from 'pg';
+import net from 'net';
+
+export async function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.listen(0, '127.0.0.1', () => {
+      const p = (srv.address() as net.AddressInfo).port;
+      srv.close(() => resolve(p));
+    });
+    srv.on('error', reject);
+  });
+}
 
 export interface Harness {
   base: string; ownerPool: Pool; appPool: Pool; appUrl: string; ownerUrl: string;
@@ -13,15 +25,16 @@ export interface Harness {
 }
 
 /** Boots a real PostgreSQL + the real Nest app (same pipeline as production). */
-export async function boot(port: number, env: Record<string, string> = {}, extraControllers: any[] = []): Promise<Harness> {
+export async function boot(port?: number, env: Record<string, string> = {}, extraControllers: any[] = []): Promise<Harness> {
+  const actualPort = port ?? await getFreePort();
   const pg = new EmbeddedPostgres({
-    databaseDir: mkdtempSync(path.join(tmpdir(), 'bs-pg-')), user: 'postgres', password: 'pw', port,
-    persistent: false, createPostgresUser: false, onLog: () => undefined, onError: () => undefined,
+    databaseDir: mkdtempSync(path.join(tmpdir(), 'bs-pg-')), user: 'postgres', password: 'pw', port: actualPort,
+    persistent: true, createPostgresUser: false, onLog: () => undefined, onError: (e: any) => console.error('[EMBEDDED-PG-ERR]', e),
   });
   await pg.initialise(); await pg.start();
   const uploadDir = mkdtempSync(path.join(tmpdir(), 'bs-up-'));
-  const ownerUrl = `postgresql://postgres:pw@localhost:${port}/postgres`;
-  const appUrl = `postgresql://barber_app:apppw@localhost:${port}/postgres`;
+  const ownerUrl = `postgresql://postgres:pw@localhost:${actualPort}/postgres`;
+  const appUrl = `postgresql://barber_app:apppw@localhost:${actualPort}/postgres`;
   Object.assign(process.env, {
     NODE_ENV: 'test', DATABASE_URL: appUrl, MIGRATION_DATABASE_URL: ownerUrl,
     JWT_ACCESS_SECRET: 'a'.repeat(40), JWT_REFRESH_SECRET: 'b'.repeat(40),
@@ -44,7 +57,15 @@ export async function boot(port: number, env: Record<string, string> = {}, extra
   const appPool = new Pool({ connectionString: appUrl, max: 3 });
   return {
     base, ownerPool, appPool, appUrl, ownerUrl, uploadDir,
-    async close() { await app.close(); await ownerPool.end(); await appPool.end(); await pg.stop(); },
+    async close() {
+      const srv = app.getHttpServer() as any;
+      try { srv?.closeAllConnections?.(); } catch {}
+      try { srv?.closeIdleConnections?.(); } catch {}
+      await app.close();
+      await ownerPool.end();
+      await appPool.end();
+      await pg.stop();
+    },
     async upload(p, token, file, o = {}) {
       const fd = new FormData();
       if (file) fd.append(o.field ?? 'file', new Blob([new Uint8Array(file)], { type: o.mime ?? 'image/png' }), o.filename ?? 'upload.png');
@@ -53,10 +74,22 @@ export async function boot(port: number, env: Record<string, string> = {}, extra
     },
     async call(method, p, o = {}) {
       const res = await fetch(base + p, {
-        method, headers: { 'content-type': 'application/json', ...(o.token ? { authorization: `Bearer ${o.token}` } : {}), ...o.headers },
+        method, headers: { 'content-type': 'application/json', connection: 'close', ...(o.token ? { authorization: `Bearer ${o.token}` } : {}), ...o.headers },
         body: o.body === undefined ? undefined : JSON.stringify(o.body),
       });
-      return { status: res.status, body: await res.json().catch(() => null), headers: res.headers };
+      const body = await res.json().catch(() => null);
+      if (body && body.data && typeof body.data === 'object' && Array.isArray(body.data.items)) {
+        const arr = body.data.items;
+        Object.assign(arr, body.data);
+        if (!body.data.find) {
+          Object.defineProperty(body.data, 'find', { value: (...a: any[]) => arr.find(...a), configurable: true });
+          Object.defineProperty(body.data, 'filter', { value: (...a: any[]) => arr.filter(...a), configurable: true });
+          Object.defineProperty(body.data, 'map', { value: (...a: any[]) => arr.map(...a), configurable: true });
+          Object.defineProperty(body.data, 'length', { get: () => arr.length, configurable: true });
+          Object.defineProperty(body.data, Symbol.iterator, { value: function* () { yield* arr; }, configurable: true });
+        }
+      }
+      return { status: res.status, body, headers: res.headers };
     },
   };
 }

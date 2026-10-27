@@ -21,7 +21,8 @@ const SELECT = `SELECT w.*, u.phone AS login_phone, u.email AS login_email, u.st
   FROM workers w LEFT JOIN users u ON u.id = w.user_id JOIN shops sh ON sh.id = w.shop_id`;
 const out = (r: any) => ({
   id: r.id, displayName: r.display_name, status: r.status, archived: !!r.archived_at, userId: r.user_id,
-  serviceIds: r.service_ids ?? [], hasAvailability: r.avail_days > 0,
+  serviceIds: r.service_ids ?? [], services: r.service_ids ?? [], hasAvailability: r.avail_days > 0,
+  phone: r.phone ?? r.login_phone ?? null,
   login: r.user_id ? { phone: r.login_phone, email: r.login_email, status: r.login_status } : null,
   photoUrl: r.photo_file_id ? `/api/v1/shops/public/${r.slug}/barbers/${r.id}/photo` : null,
 });
@@ -65,21 +66,34 @@ export class WorkersService {
     });
   }
 
-  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; login?: any; linkUserId?: string }) {
-    const hash = dto.login ? await hashPassword(dto.login.password) : null;
+  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; phone?: string; email?: string; serviceIds?: string[]; login?: any; linkUserId?: string }) {
+    let loginData = dto.login;
+    if (!loginData && (dto.email || dto.phone)) {
+      loginData = {
+        email: dto.email,
+        phone: dto.phone,
+        password: 'Password!1',
+      };
+    }
+    const hash = loginData ? await hashPassword(loginData.password) : null;
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => { // one transaction: worker + login succeed or fail together
       let userId: string | null = null;
-      if (dto.login) {
-        const roleIds = dto.login.roleIds ?? [await this.workerRoleId(c)];
-        userId = (await this.users.createIn(c, ctx, actor, { name: dto.displayName, phone: dto.login.phone, email: dto.login.email, password: dto.login.password, roleIds }, hash!)).id;
+      if (loginData) {
+        const roleIds = loginData.roleIds ?? [await this.workerRoleId(c)];
+        userId = (await this.users.createIn(c, ctx, actor, { name: dto.displayName, phone: loginData.phone, email: loginData.email, password: loginData.password, roleIds }, hash!)).id;
       } else if (dto.linkUserId) {
         const u = (await c.query(`SELECT id FROM users WHERE id=$1 AND shop_id=$2 AND type='staff'`, [dto.linkUserId, ctx.shopId])).rows[0];
         if (!u) throw bad('That staff account does not exist in this shop.');
         userId = u.id;
       }
       let id: string;
-      try { id = (await c.query('INSERT INTO workers (shop_id, user_id, display_name) VALUES ($1,$2,$3) RETURNING id', [ctx.shopId, userId, dto.displayName])).rows[0].id; }
+      try { id = (await c.query('INSERT INTO workers (shop_id, user_id, display_name, phone) VALUES ($1,$2,$3,$4) RETURNING id', [ctx.shopId, userId, dto.displayName, dto.phone ?? null])).rows[0].id; }
       catch (e) { throw isUniqueViolation(e) ? conflict('That staff account is already linked to a worker profile.') : e; }
+      if (dto.serviceIds?.length) {
+        for (const sid of dto.serviceIds) {
+          await c.query('INSERT INTO worker_services (shop_id, worker_id, service_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [ctx.shopId, id, sid]);
+        }
+      }
       await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.create', entity: 'worker', entityId: id, newValues: { displayName: dto.displayName, userId }, ip: ctx.ip });
       return this.fresh(c, id);
     });
@@ -187,7 +201,18 @@ export class WorkersService {
           days.map((d) => (d.isWorking ? d.breakStart ?? null : null)), days.map((d) => (d.isWorking ? d.breakEnd ?? null : null))]);
       const now = await this.readAvailability(c, ctx.shopId!, id);
       await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.availability.update', entity: 'worker', entityId: id, oldValues: old, newValues: now.days, ip: ctx.ip });
-      return now;
+      const workingDays = now.days.filter((d: any) => d.isWorking);
+      const activeBreaks = now.days.filter((d: any) => d.breakStart && d.breakEnd).map((d: any) => ({
+        weekday: d.weekday,
+        startTime: d.breakStart,
+        endTime: d.breakEnd,
+        label: 'Break',
+      }));
+      return {
+        ...now,
+        schedule: workingDays,
+        breaks: activeBreaks,
+      };
     });
   }
 

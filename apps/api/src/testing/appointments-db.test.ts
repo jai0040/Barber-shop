@@ -19,7 +19,7 @@ const ins = (o: { shop?: string; customer?: string; worker?: string | null; star
     [o.shop ?? ID.shopA, o.customer ?? C.jay, o.worker === undefined ? W.Rahul : o.worker, o.start, o.end, o.status ?? 'booked', o.source ?? 'admin', o.from ?? null]).then((r) => r.rows[0].id as string);
 
 before(async () => {
-  h = await boot(54350);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');

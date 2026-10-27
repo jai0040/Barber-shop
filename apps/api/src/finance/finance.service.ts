@@ -25,15 +25,12 @@ export class FinanceService {
 
   async listCategories(ctx: AuthContext): Promise<ExpenseCategory[]> {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      // Seed default categories if none exist
-      const count = Number((await c.query(`SELECT count(*)::int AS n FROM expense_categories WHERE shop_id = $1`, [ctx.shopId])).rows[0].n);
-      if (count === 0) {
-        for (const catName of DEFAULT_EXPENSE_CATEGORIES) {
-          await c.query(`INSERT INTO expense_categories (shop_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-            ctx.shopId,
-            catName,
-          ]);
-        }
+      // Ensure default categories exist
+      for (const catName of DEFAULT_EXPENSE_CATEGORIES) {
+        await c.query(`INSERT INTO expense_categories (shop_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+          ctx.shopId,
+          catName,
+        ]);
       }
 
       const rows = (await c.query(
@@ -182,10 +179,9 @@ export class FinanceService {
       const revRes = await c.query(
         `SELECT
            COALESCE(sum(CASE WHEN ii.type = 'service' THEN ii.total_paise ELSE 0 END), 0) AS service_rev,
-           COALESCE(sum(CASE WHEN ii.type = 'product' THEN ii.total_paise ELSE 0 END), 0) AS product_rev,
-           COALESCE(sum(inv.final_total_paise), 0) AS total_rev
-         FROM invoices inv
-         LEFT JOIN invoice_items ii ON ii.invoice_id = inv.id
+           COALESCE(sum(CASE WHEN ii.type = 'product' THEN ii.total_paise ELSE 0 END), 0) AS product_rev
+         FROM invoice_items ii
+         JOIN invoices inv ON inv.id = ii.invoice_id
          WHERE inv.shop_id = $1
            AND inv.payment_status = 'paid'
            AND inv.created_at >= $2::date
@@ -193,9 +189,19 @@ export class FinanceService {
         [ctx.shopId, start, end]
       );
 
+      const totRes = await c.query(
+        `SELECT COALESCE(sum(final_total_paise), 0) AS total_rev
+         FROM invoices
+         WHERE shop_id = $1
+           AND payment_status = 'paid'
+           AND created_at >= $2::date
+           AND created_at < ($3::date + interval '1 day')`,
+        [ctx.shopId, start, end]
+      );
+
       const serviceRevenuePaise = Number(revRes.rows[0].service_rev);
       const productRevenuePaise = Number(revRes.rows[0].product_rev);
-      const totalRevenuePaise = Number(revRes.rows[0].total_rev);
+      const totalRevenuePaise = Number(totRes.rows[0].total_rev);
 
       // 2. Expenses in date range
       const expRes = await c.query(

@@ -10,7 +10,7 @@ let rahulId: string;
 let haircutId: string;
 
 before(async () => {
-    h = await boot(25438);
+  h = await boot();
 
     // Onboard Shop A
     const s = (await h.ownerPool.query(
@@ -36,6 +36,17 @@ before(async () => {
       [u.id, s.id, ownerRoleId]
     );
 
+    await h.ownerPool.query(
+      `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions`,
+      [ownerRoleId, s.id]
+    );
+
+    const workerRoleId = r.find((x: any) => x.system_key === 'worker').id;
+    await h.ownerPool.query(
+      `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions WHERE key IN ('dashboard.view', 'appointments.view', 'customers.view')`,
+      [workerRoleId, s.id]
+    );
+
     const { TokenService } = await import('../core/token.service');
     const tokens = new TokenService();
     ownerTokenA = tokens.signAccess({ id: u.id, type: 'staff', name: u.name, shop_id: s.id } as any);
@@ -50,9 +61,16 @@ before(async () => {
     // Create worker Rahul
     const w1 = await h.call('POST', '/workers', {
       token: ownerTokenA,
-      body: { displayName: 'Rahul', phone: '+919876543001', email: 'rahul.barber@classic.com', serviceIds: [haircutId] },
+      body: {
+        displayName: 'Rahul',
+        login: { email: 'rahul.barber@classic.com', password: 'Password!1' },
+      },
     });
     rahulId = w1.body.data.id;
+    await h.call('PUT', `/workers/${rahulId}/services`, {
+      token: ownerTokenA,
+      body: { ids: [haircutId] },
+    });
 
     const rahulUser = (await h.ownerPool.query(`SELECT id, name FROM users WHERE email = 'rahul.barber@classic.com'`)).rows[0];
     workerTokenRahul = tokens.signAccess({ id: rahulUser.id, type: 'staff', name: rahulUser.name, shop_id: s.id } as any);

@@ -12,7 +12,7 @@ let ownerTokenA: string;
   const ownerB = { email: 'owner.b@example.com', password: 'OwnerPassword!1', name: 'Owner B' };
 
   before(async () => {
-    h = await boot(25434);
+    h = await boot();
 
     // Seed platform admin
     await h.ownerPool.query(
@@ -47,6 +47,11 @@ let ownerTokenA: string;
       await h.ownerPool.query(
         `INSERT INTO user_roles (user_id, shop_id, role_id) VALUES ($1, $2, $3)`,
         [uid, sid, ownerRoleId]
+      );
+
+      await h.ownerPool.query(
+        `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope) SELECT $1, $2, id, 'all' FROM permissions`,
+        [ownerRoleId, sid]
       );
 
       // Set business hours for shop: Monday (weekday=1) 10:00 to 20:00

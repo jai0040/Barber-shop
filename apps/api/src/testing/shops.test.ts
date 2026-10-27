@@ -16,7 +16,7 @@ const week = (open = '10:00', close = '21:00') => Array.from({ length: 7 }, (_, 
   i === 6 ? { weekday: 7, isClosed: true } : { weekday: i + 1, isClosed: false, openTime: open, closeTime: close });
 
 before(async () => {
-  h = await boot(54343);
+  h = await boot();
   const { createPlatformAdmin } = await import('../cli-create-platform-admin');
   await createPlatformAdmin(h.ownerUrl, { name: 'Platform Admin', email: 'root@platform.test', password: pw });
   T.platform = await login('root@platform.test');

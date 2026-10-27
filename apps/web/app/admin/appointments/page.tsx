@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { apiRequest, formatINR } from '@/lib/api';
 import AdminLayout from '@/components/admin/AdminLayout';
@@ -56,7 +56,7 @@ interface ServiceItem {
   durationMinutes: number;
 }
 
-export default function AdminAppointmentsPage() {
+function AdminAppointmentsContent() {
   const searchParams = useSearchParams();
   const initialAction = searchParams.get('action');
 
@@ -747,5 +747,22 @@ export default function AdminAppointmentsPage() {
         </div>
       )}
     </AdminLayout>
+  );
+}
+
+export default function AdminAppointmentsPage() {
+  return (
+    <Suspense
+      fallback={
+        <AdminLayout title="Appointment Management">
+          <div className="p-12 text-center text-slate-500 text-xs">
+            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            Loading appointments...
+          </div>
+        </AdminLayout>
+      }
+    >
+      <AdminAppointmentsContent />
+    </Suspense>
   );
 }
