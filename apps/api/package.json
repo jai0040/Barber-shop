@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "node dist/cli-dev.js",
+    "dev:ts": "ts-node-dev --respawn src/cli-dev.ts",
     "start:dev": "ts-node-dev --respawn src/main.ts",
     "start": "node dist/main.js",
     "migrate": "node dist/db/migrate-cli.js",

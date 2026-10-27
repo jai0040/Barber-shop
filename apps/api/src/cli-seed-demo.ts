@@ -2,6 +2,13 @@ import { Pool } from 'pg';
 import { loadConfig } from './config';
 import { hashPassword } from './auth/auth.service';
 
+const port = Number(process.env.DB_PORT || 5432);
+process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+process.env.DATABASE_URL = process.env.DATABASE_URL || `postgresql://barber_app:apppw@localhost:${port}/postgres`;
+process.env.MIGRATION_DATABASE_URL = process.env.MIGRATION_DATABASE_URL || `postgresql://postgres:pw@localhost:${port}/postgres`;
+process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-access-secret-32-chars-minimum-key!!';
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-32-chars-minimum-key!!';
+
 async function seed() {
   const cfg = loadConfig();
   const pool = new Pool({ connectionString: cfg.MIGRATION_DATABASE_URL });
@@ -60,11 +67,14 @@ async function seed() {
     }
 
     // 4. Categories & Services
-    const cat = (await pool.query(
-      `INSERT INTO service_categories (shop_id, name, display_order)
-       VALUES ($1, 'Grooming Services', 1) ON CONFLICT (shop_id, name) DO UPDATE SET display_order = 1 RETURNING id`,
-      [shopId]
-    )).rows[0];
+    let cat = (await pool.query(`SELECT id FROM service_categories WHERE shop_id = $1 AND lower(name) = lower('Grooming Services')`, [shopId])).rows[0];
+    if (!cat) {
+      cat = (await pool.query(
+        `INSERT INTO service_categories (shop_id, name, display_order)
+         VALUES ($1, 'Grooming Services', 1) RETURNING id`,
+        [shopId]
+      )).rows[0];
+    }
 
     const demoServices = [
       { name: 'Haircut', price: 30000, duration: 30, desc: 'Precision styling, wash and finish' },
@@ -75,14 +85,15 @@ async function seed() {
 
     const serviceMap = new Map<string, string>();
     for (const s of demoServices) {
-      const res = (await pool.query(
-        `INSERT INTO services (shop_id, category_id, name, description, price_paise, duration_minutes)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (id, shop_id) DO NOTHING RETURNING id`,
-        [shopId, cat.id, s.name, s.desc, s.price, s.duration]
-      )).rows[0];
-      const sid = res ? res.id : (await pool.query(`SELECT id FROM services WHERE shop_id = $1 AND name = $2`, [shopId, s.name])).rows[0].id;
-      serviceMap.set(s.name, sid);
+      let sRow = (await pool.query(`SELECT id FROM services WHERE shop_id = $1 AND lower(name) = lower($2)`, [shopId, s.name])).rows[0];
+      if (!sRow) {
+        sRow = (await pool.query(
+          `INSERT INTO services (shop_id, category_id, name, description, price_paise, duration_minutes)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [shopId, cat.id, s.name, s.desc, s.price, s.duration]
+        )).rows[0];
+      }
+      serviceMap.set(s.name, sRow.id);
     }
 
     // 5. Workers: Rahul, Amit, Raj
@@ -155,23 +166,228 @@ async function seed() {
     }
 
     // 7. Customers & Sample Appointments
-    const custRes = (await pool.query(
-      `INSERT INTO customers (shop_id, name, phone, email, notes)
-       VALUES ($1, 'Jayant Patel', '+919876599001', 'jayant@example.com', 'Prefers short haircut, zero fade')
-       ON CONFLICT (shop_id, phone) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
-      [shopId]
+    const demoCustomers = [
+      { name: 'Jayant Patel', phone: '+919876599001', email: 'jayant@example.com', notes: 'Prefers short haircut, zero fade' },
+      { name: 'Rohit Sharma', phone: '+919876599002', email: 'rohit@example.com', notes: 'Classic beard styling, needs hot towel' },
+      { name: 'Suresh Raina', phone: '+919876599003', email: 'suresh@example.com', notes: 'Prefers Hair Spa on weekends' },
+      { name: 'Virat Kohli',  phone: '+919876599004', email: 'virat@example.com',  notes: 'Sharp edges and beard lineup' },
+    ];
+
+    const customerIds: Record<string, string> = {};
+    for (const c of demoCustomers) {
+      let custRow = (await pool.query(
+        `SELECT id FROM customers WHERE shop_id = $1 AND phone = $2 AND archived_at IS NULL`,
+        [shopId, c.phone]
+      )).rows[0];
+      if (!custRow) {
+        custRow = (await pool.query(
+          `INSERT INTO customers (shop_id, name, phone, email, notes)
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+          [shopId, c.name, c.phone, c.email, c.notes]
+        )).rows[0];
+      } else {
+        await pool.query(
+          `UPDATE customers SET name = $1, email = $2, notes = $3 WHERE id = $4`,
+          [c.name, c.email, c.notes, custRow.id]
+        );
+      }
+      customerIds[c.name] = custRow.id;
+    }
+
+    // Worker IDs map
+    const workerRows = (await pool.query(`SELECT id, display_name FROM workers WHERE shop_id = $1`, [shopId])).rows;
+    const workerIds: Record<string, string> = {};
+    for (const w of workerRows) {
+      workerIds[w.display_name] = w.id;
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // 1. Jayant: Today 10:30 with Rahul (booked) - Haircut (₹300)
+    const sidHaircut = serviceMap.get('Haircut')!;
+    let apt1 = (await pool.query(
+      `SELECT id FROM appointments WHERE shop_id = $1 AND customer_id = $2 AND date = $3::date AND start_time = '10:30'::time`,
+      [shopId, customerIds['Jayant Patel'], todayStr]
     )).rows[0];
+    if (!apt1) {
+      apt1 = (await pool.query(
+        `INSERT INTO appointments (shop_id, customer_id, worker_id, date, start_time, end_time, status, source, total_amount_paise, notes)
+         VALUES ($1, $2, $3, $4::date, '10:30'::time, '11:00'::time, 'booked', 'online', 30000, 'Online booking via website')
+         RETURNING id`,
+        [shopId, customerIds['Jayant Patel'], workerIds['Rahul'], todayStr]
+      )).rows[0];
+      if (apt1) {
+        await pool.query(
+          `INSERT INTO appointment_services (shop_id, appointment_id, service_id, service_name, unit_price_paise, duration_minutes)
+           VALUES ($1, $2, $3, 'Haircut', 30000, 30)`,
+          [shopId, apt1.id, sidHaircut]
+        );
+        await pool.query(
+          `INSERT INTO appointment_status_history (shop_id, appointment_id, status, notes)
+           VALUES ($1, $2, 'booked', 'Customer booked online')`,
+          [shopId, apt1.id]
+        );
+      }
+    }
+
+    // 2. Rohit: Today 12:00 with Amit (in_service) - Haircut (₹300) + Beard Trim add-on (₹150)
+    const sidBeard = serviceMap.get('Beard Trim')!;
+    let apt2 = (await pool.query(
+      `SELECT id FROM appointments WHERE shop_id = $1 AND customer_id = $2 AND date = $3::date AND start_time = '12:00'::time`,
+      [shopId, customerIds['Rohit Sharma'], todayStr]
+    )).rows[0];
+    if (!apt2) {
+      apt2 = (await pool.query(
+        `INSERT INTO appointments (shop_id, customer_id, worker_id, date, start_time, end_time, status, source, total_amount_paise, notes)
+         VALUES ($1, $2, $3, $4::date, '12:00'::time, '12:50'::time, 'in_service', 'online', 45000, 'Customer in chair; added beard trim')
+         RETURNING id`,
+        [shopId, customerIds['Rohit Sharma'], workerIds['Amit'], todayStr]
+      )).rows[0];
+      if (apt2) {
+        await pool.query(
+          `INSERT INTO appointment_services (shop_id, appointment_id, service_id, service_name, unit_price_paise, duration_minutes, is_addon)
+           VALUES ($1, $2, $3, 'Haircut', 30000, 30, false), ($1, $2, $4, 'Beard Trim', 15000, 20, true)`,
+          [shopId, apt2.id, sidHaircut, sidBeard]
+        );
+        await pool.query(
+          `INSERT INTO appointment_status_history (shop_id, appointment_id, status, notes)
+           VALUES ($1, $2, 'booked', 'Online booking'), ($1, $2, 'checked_in', 'Customer arrived'), ($1, $2, 'in_service', 'Started on chair')`,
+          [shopId, apt2.id]
+        );
+      }
+    }
+
+    // 3. Suresh: Today 14:00 with Raj (completed) - Hair Spa (₹600) + Paid Invoice
+    const sidHairSpa = serviceMap.get('Hair Spa')!;
+    let apt3 = (await pool.query(
+      `SELECT id FROM appointments WHERE shop_id = $1 AND customer_id = $2 AND date = $3::date AND start_time = '14:00'::time`,
+      [shopId, customerIds['Suresh Raina'], todayStr]
+    )).rows[0];
+    if (!apt3) {
+      apt3 = (await pool.query(
+        `INSERT INTO appointments (shop_id, customer_id, worker_id, date, start_time, end_time, status, source, total_amount_paise, notes)
+         VALUES ($1, $2, $3, $4::date, '14:00'::time, '15:00'::time, 'completed', 'walk_in', 60000, 'Satisfied customer')
+         RETURNING id`,
+        [shopId, customerIds['Suresh Raina'], workerIds['Raj'], todayStr]
+      )).rows[0];
+      if (apt3) {
+        await pool.query(
+          `INSERT INTO appointment_services (shop_id, appointment_id, service_id, service_name, unit_price_paise, duration_minutes)
+           VALUES ($1, $2, $3, 'Hair Spa', 60000, 60)`,
+          [shopId, apt3.id, sidHairSpa]
+        );
+        await pool.query(
+          `INSERT INTO appointment_status_history (shop_id, appointment_id, status, notes)
+           VALUES ($1, $2, 'completed', 'Service completed and billed')`,
+          [shopId, apt3.id]
+        );
+
+        // Create completed invoice & payment
+        const invNum = `INV-${Date.now().toString().slice(-6)}`;
+        const invRow = (await pool.query(
+          `INSERT INTO invoices (shop_id, invoice_number, appointment_id, customer_id, worker_id, subtotal_paise, discount_paise, final_total_paise, payment_status)
+           VALUES ($1, $2, $3, $4, $5, 60000, 0, 60000, 'paid') RETURNING id`,
+          [shopId, invNum, apt3.id, customerIds['Suresh Raina'], workerIds['Raj']]
+        )).rows[0];
+
+        await pool.query(
+          `INSERT INTO invoice_items (shop_id, invoice_id, type, item_id, item_name, quantity, unit_price_paise, total_paise)
+           VALUES ($1, $2, 'service', $3, 'Hair Spa', 1, 60000, 60000)`,
+          [shopId, invRow.id, sidHairSpa]
+        );
+
+        await pool.query(
+          `INSERT INTO payments (shop_id, invoice_id, method, amount_paise, status, transaction_reference)
+           VALUES ($1, $2, 'upi_qr', 60000, 'completed', 'UPI-REF-992182')`,
+          [shopId, invRow.id]
+        );
+      }
+    }
+
+    // 4. Unassigned walk-in: Today 17:30 (booked, worker_id = NULL) - Haircut (₹300)
+    let apt4 = (await pool.query(
+      `SELECT id FROM appointments WHERE shop_id = $1 AND customer_id = $2 AND date = $3::date AND start_time = '17:30'::time`,
+      [shopId, customerIds['Virat Kohli'], todayStr]
+    )).rows[0];
+    if (!apt4) {
+      apt4 = (await pool.query(
+        `INSERT INTO appointments (shop_id, customer_id, worker_id, date, start_time, end_time, status, source, is_walk_in, total_amount_paise, notes)
+         VALUES ($1, $2, NULL, $3::date, '17:30'::time, '18:00'::time, 'booked', 'walk_in', true, 30000, 'Unassigned walk-in; waiting for admin assignment')
+         RETURNING id`,
+        [shopId, customerIds['Virat Kohli'], todayStr]
+      )).rows[0];
+      if (apt4) {
+        await pool.query(
+          `INSERT INTO appointment_services (shop_id, appointment_id, service_id, service_name, unit_price_paise, duration_minutes)
+           VALUES ($1, $2, $3, 'Haircut', 30000, 30)`,
+          [shopId, apt4.id, sidHaircut]
+        );
+      }
+    }
+
+    // 8. Expense Categories and Historical Expenses
+    const demoExpenseCats = ['Rent & Facilities', 'Utilities', 'Salaries & Wages', 'Shop Supplies'];
+    const expenseCatIds: Record<string, string> = {};
+    for (const ec of demoExpenseCats) {
+      let ecRow = (await pool.query(
+        `SELECT id FROM expense_categories WHERE shop_id = $1 AND name = $2`,
+        [shopId, ec]
+      )).rows[0];
+      if (!ecRow) {
+        ecRow = (await pool.query(
+          `INSERT INTO expense_categories (shop_id, name)
+           VALUES ($1, $2) RETURNING id`,
+          [shopId, ec]
+        )).rows[0];
+      }
+      expenseCatIds[ec] = ecRow.id;
+    }
+
+    const demoExpenses = [
+      { cat: 'Rent & Facilities', amount: 2500000, desc: 'Shop monthly rent for MG Road premises', method: 'bank_transfer' },
+      { cat: 'Utilities', amount: 450000, desc: 'Electricity and water bill', method: 'online' },
+      { cat: 'Shop Supplies', amount: 320000, desc: 'Disinfectant, neck strips, towels, razor blades', method: 'cash' },
+      { cat: 'Salaries & Wages', amount: 1800000, desc: 'Barber staff base payout advance', method: 'bank_transfer' },
+    ];
+
+    for (const exp of demoExpenses) {
+      const existing = (await pool.query(
+        `SELECT id FROM expenses WHERE shop_id = $1 AND category_id = $2 AND description = $3`,
+        [shopId, expenseCatIds[exp.cat], exp.desc]
+      )).rows[0];
+      if (!existing) {
+        await pool.query(
+          `INSERT INTO expenses (shop_id, category_id, amount_paise, date, description, payment_method)
+           VALUES ($1, $2, $3, CURRENT_DATE, $4, $5)`,
+          [shopId, expenseCatIds[exp.cat], exp.amount, exp.desc, exp.method]
+        );
+      }
+    }
 
     console.log('✅ Realistic demo data successfully seeded for Classic Barber Shop!');
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);
     console.log('Workers: Rahul, Amit, Raj (Password: WorkerPass#123)');
+    console.log('Sample Appointments:');
+    console.log(' - Jayant Patel @ 10:30 (Haircut ₹300) with Rahul [Booked]');
+    console.log(' - Rohit Sharma @ 12:00 (Haircut + Beard Trim ₹450) with Amit [In Service]');
+    console.log(' - Suresh Raina @ 14:00 (Hair Spa ₹600) with Raj [Completed & Paid via UPI QR]');
+    console.log(' - Virat Kohli @ 17:30 (Haircut ₹300) [Unassigned Walk-In]');
+    console.log('Inventory & Low Stock Alerts:');
+    console.log(' - Beard Oil (20 in stock)');
+    console.log(' - Hair Wax (15 in stock)');
+    console.log(' - Shampoo (3 in stock, alert threshold is 5)');
+    console.log('Finances: Rent, Utilities, Supplies & Salaries logged.');
   } finally {
     await pool.end();
   }
 }
 
-seed().catch((err) => {
-  console.error('Seeding failed:', err);
-  process.exit(1);
-});
+export { seed as seedDemo };
+
+if (require.main === module) {
+  seed().catch((err) => {
+    console.error('Seeding failed:', err);
+    process.exit(1);
+  });
+}
