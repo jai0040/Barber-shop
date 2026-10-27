@@ -8,6 +8,9 @@
     "dev:api": "npm run dev -w @barbershop/api",
     "dev:web": "npm run dev -w @barbershop/web",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up --build -d"
   }
 }
