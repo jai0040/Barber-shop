@@ -17,6 +17,23 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
   - Walk-in support with admin barber assignment.
 
+- **Customer Loyalty Points Program (Phase 2)**:
+  - Configurable shop earn rates (`earn_per_rupee_paise`) and point redemption values (`point_value_paise`).
+  - Configurable minimum redemption thresholds and maximum bill percentage coverage limits.
+  - Append-only `customer_loyalty_ledger` (`earn_invoice`, `redeem_invoice`, `manual_adjustment`, `membership_bonus`, `welcome_bonus`, `reversal`).
+  - Real-time POS points redemption with automatic balance checks.
+  - Automatic loyalty points award upon full invoice payment.
+  - Automatic ledger reversal and point refunding upon invoice voiding.
+
+- **Membership Plans & VIP Subscriptions (Phase 2)**:
+  - Multi-tier membership plans (e.g. VIP Grooming Pass) with custom durations (monthly, quarterly, annual).
+  - Service & product percentage discounts with 1-click POS auto-calculation.
+  - Bonus points multiplier on every invoice payment.
+  - Included complimentary services quota (e.g., 2 free haircuts/month) with real-time remaining quota tracking.
+  - 1-click complimentary service redemption directly at the POS billing terminal.
+  - Public membership plan catalog (`/[slug]/memberships`) and customer self-service dashboard (`/my-account`).
+  - Full admin management portal (`/admin/memberships`) for plans, subscriptions, and manual point adjustments.
+
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
   - Worker-service capability matrix (barbers only assigned to services they can perform).
@@ -26,8 +43,9 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
 
 - **Billing & POS System**:
   - Fast in-shop checkout for completed appointments and retail walk-ins (`/admin/billing`).
+  - Integrated VIP Membership benefits, complimentary inclusions, and loyalty points redemption.
   - Integer paise precision ($1\text{ INR} = 100\text{ paise}$) preventing floating-point rounding errors.
-  - Discount calculator (percentage or flat discount).
+  - Discount calculator (flat discounts, VIP membership discounts, and loyalty points).
   - Cash payment calculator with automatic change return display.
   - High-contrast UPI QR modal (`upi://pay?...`) for fast scanning.
   - Printable / downloadable invoice summaries.
@@ -48,7 +66,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Anti-privilege escalation safeguards.
 
 - **Multi-Tenant Architecture**:
-  - PostgreSQL Row-Level Security (RLS) enforces `shop_id = app_shop_id()` at the database engine level.
+  - PostgreSQL Row-Level Security (RLS) enforces `shop_id = app_shop_id()` at the database engine level across all core and loyalty/membership tables.
   - Shop A and Shop B data are strictly isolated.
   - `btree_gist` exclusion constraint prevents overlapping bookings for the same barber under high concurrency.
 
@@ -73,8 +91,8 @@ npm run dev:api
 ```
 This single command automatically:
 1. Boots embedded PostgreSQL on port `5432` with data stored in `.data/postgres/`.
-2. Applies all database migrations (`001_core.sql` through `006_products_billing_finance.sql`).
-3. Seeds comprehensive demo data for **Classic Barber Shop**.
+2. Applies all database migrations (`001_core.sql` through `007_loyalty_memberships.sql`).
+3. Seeds comprehensive demo data for **Classic Barber Shop** (including loyalty rules, VIP plans, and customer balances).
 4. Starts the NestJS API on **`http://localhost:4000/api/v1`**.
 
 ### 3. Start the Web Frontend
@@ -98,6 +116,10 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 - **Amit**: `amit@classicbarber.com` / `WorkerPass#123` *(Skills: Haircut, Beard Trim, Combo, Hair Spa)*
 - **Raj**: `raj@classicbarber.com` / `WorkerPass#123` *(Skills: Haircut, Hair Spa)*
 
+### 3. Customer Accounts (With Loyalty & Memberships)
+- **Jayant Patel**: `jayant@example.com` / `CustomerPass#123` *(Balance: 150 Loyalty Pts | VIP Grooming Pass Subscriber)*
+- **Rohit Sharma**: `rohit@example.com` / `CustomerPass#123` *(Balance: 60 Loyalty Pts)*
+
 ---
 
 ## 🗺️ Application Routes
@@ -105,9 +127,10 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 ### Customer Portal
 - `http://localhost:3000/classic-barber/book` — 4-step mobile booking flow.
 - `http://localhost:3000/classic-barber/services` — Public service menu with prices and categories.
+- `http://localhost:3000/classic-barber/memberships` — Public VIP membership plans & perks catalog.
 - `http://localhost:3000/classic-barber/barbers` — Public barber team profiles and capabilities.
 - `http://localhost:3000/classic-barber/products` — In-shop retail product catalog.
-- `http://localhost:3000/my-account` — Customer self-service appointment history.
+- `http://localhost:3000/my-account` — Customer self-service appointments, loyalty points balance, and active VIP membership status.
 
 ### Worker Station
 - `http://localhost:3000/worker` — Barber chair queue, status transitions, and on-chair service additions.
@@ -115,7 +138,8 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 ### Shop Admin Panel
 - `http://localhost:3000/admin/dashboard` — Daily overview metrics (appointments, active chair, revenue).
 - `http://localhost:3000/admin/appointments` — Calendar / list appointment manager & walk-in assignment.
-- `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, discounts, cash change, and UPI QR.
+- `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, VIP perks, loyalty point redemption, cash change, and UPI QR.
+- `http://localhost:3000/admin/memberships` — VIP Membership plans, customer subscriptions, loyalty configuration, and manual points adjustments.
 - `http://localhost:3000/admin/customers` — Client directory, service history, and notes.
 - `http://localhost:3000/admin/inventory` — Product catalog, stock levels, adjustments, and low-stock alerts.
 - `http://localhost:3000/admin/finance` — Income, expense categories, and net profit ledger.
@@ -133,7 +157,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### Test Coverage (100% Passing — 237 / 237 Tests)
+### Test Coverage (100% Passing — 252 / 252 Tests)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `auth-rbac.test.ts` — Granular RBAC permission enforcement, Argon2 password hashing, refresh token family rotation, CSRF cookie security, escalation prevention.
@@ -141,13 +165,14 @@ npm test
 5. `catalog.test.ts` — Service categories, integer paise validation, price history audit, active/archived state, public catalog grouping.
 6. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
 7. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
-8. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-9. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-10. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-11. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-12. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-13. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-14. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+8. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
+9. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+10. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+11. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+12. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+13. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+14. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+15. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 
@@ -166,4 +191,4 @@ Builds:
 
 ## 📐 Technical Decisions Reference
 
-Full architectural decisions (D1 through D48) are detailed in [docs/DECISIONS.md](docs/DECISIONS.md).
+Full architectural decisions (D1 through D50) are detailed in [docs/DECISIONS.md](docs/DECISIONS.md).
