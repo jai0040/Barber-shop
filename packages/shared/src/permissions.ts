@@ -49,6 +49,10 @@ export const PERMISSIONS: PermissionDef[] = [
   d('roles.manage', 'Manage roles'),
   d('permissions.manage', 'Assign permissions to roles'),
   d('audit.view', 'View audit log'),
+  d('loyalty.view', 'View loyalty points and settings', true),
+  d('loyalty.manage', 'Configure loyalty program and manual point adjustments'),
+  d('memberships.view', 'View membership plans and customer subscriptions', true),
+  d('memberships.manage', 'Create/edit membership plans and subscriptions'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -69,6 +73,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'services.view', 'workers.view', 'workers.create', 'workers.update', 'workers.performance.view',
       'products.view', 'products.create', 'products.update', 'inventory.view', 'inventory.manage',
       'billing.view', 'billing.create', 'billing.void', 'payments.view', 'payments.record', 'reports.view',
+      'loyalty.view', 'loyalty.manage', 'memberships.view', 'memberships.manage',
     ),
   },
   {
@@ -85,6 +90,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update', 'appointments.add_service',
       'customers.view', 'customers.create', 'customers.update', 'services.view', 'products.view',
       'billing.view', 'billing.create', 'payments.view', 'payments.record',
+      'loyalty.view', 'memberships.view',
     ),
   },
   {

@@ -364,15 +364,65 @@ async function seed() {
       }
     }
 
+    // 9. Phase 2: Loyalty Settings, Customer Points & Membership Plans
+    await pool.query(
+      `INSERT INTO loyalty_settings (shop_id, is_enabled, earn_per_rupee_paise, point_value_paise, min_redeem_points, max_discount_percentage)
+       VALUES ($1, true, 10000, 100, 50, 50)
+       ON CONFLICT (shop_id) DO UPDATE SET updated_at = now()`,
+      [shopId]
+    );
+
+    // Give Jayant Patel 150 points and Rohit Sharma 60 points
+    await pool.query(`UPDATE customers SET loyalty_points = 150 WHERE id = $1 AND shop_id = $2`, [customerIds['Jayant Patel'], shopId]);
+    await pool.query(`UPDATE customers SET loyalty_points = 60 WHERE id = $1 AND shop_id = $2`, [customerIds['Rohit Sharma'], shopId]);
+
+    // Create VIP Grooming Pass membership plan
+    let vipPlan = (await pool.query(`SELECT id FROM membership_plans WHERE shop_id = $1 AND name = 'VIP Grooming Pass'`, [shopId])).rows[0];
+    if (!vipPlan) {
+      vipPlan = (
+        await pool.query(
+          `INSERT INTO membership_plans (
+             shop_id, name, description, price_paise, duration_days,
+             discount_percent_services, discount_percent_products, points_multiplier, status
+           )
+           VALUES ($1, 'VIP Grooming Pass', 'Priority styling, 20% off all services, 10% off retail, 2x points & 2 Free Haircuts', 99900, 30, 20, 10, 2.0, 'active')
+           RETURNING id`,
+          [shopId]
+        )
+      ).rows[0];
+
+      await pool.query(
+        `INSERT INTO membership_plan_included_services (shop_id, plan_id, service_id, quantity)
+         VALUES ($1, $2, $3, 2)
+         ON CONFLICT DO NOTHING`,
+        [shopId, vipPlan.id, sidHaircut]
+      );
+    }
+
+    // Subscribe Jayant Patel to the VIP Grooming Pass
+    let existingMem = (await pool.query(`SELECT id FROM customer_memberships WHERE shop_id = $1 AND customer_id = $2 AND plan_id = $3`, [shopId, customerIds['Jayant Patel'], vipPlan.id])).rows[0];
+    if (!existingMem) {
+      const end = new Date();
+      end.setDate(end.getDate() + 30);
+      await pool.query(
+        `INSERT INTO customer_memberships (shop_id, customer_id, plan_id, start_date, end_date, status, notes)
+         VALUES ($1, $2, $3, CURRENT_DATE, $4::date, 'active', 'Seeded VIP member')`,
+        [shopId, customerIds['Jayant Patel'], vipPlan.id, end.toISOString().slice(0, 10)]
+      );
+    }
+
     console.log('✅ Realistic demo data successfully seeded for Classic Barber Shop!');
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);
     console.log('Workers: Rahul, Amit, Raj (Password: WorkerPass#123)');
     console.log('Sample Appointments:');
-    console.log(' - Jayant Patel @ 10:30 (Haircut ₹300) with Rahul [Booked]');
-    console.log(' - Rohit Sharma @ 12:00 (Haircut + Beard Trim ₹450) with Amit [In Service]');
+    console.log(' - Jayant Patel @ 10:30 (Haircut ₹300) with Rahul [Booked, VIP Member, 150 pts]');
+    console.log(' - Rohit Sharma @ 12:00 (Haircut + Beard Trim ₹450) with Amit [In Service, 60 pts]');
     console.log(' - Suresh Raina @ 14:00 (Hair Spa ₹600) with Raj [Completed & Paid via UPI QR]');
     console.log(' - Virat Kohli @ 17:30 (Haircut ₹300) [Unassigned Walk-In]');
+    console.log('Phase 2 Loyalty & Memberships:');
+    console.log(' - Loyalty Program Active: 1 pt per ₹100, 1 pt = ₹1, min 50 pts');
+    console.log(' - VIP Grooming Pass: ₹999/mo, 20% svc discount, 10% prod discount, 2x points');
     console.log('Inventory & Low Stock Alerts:');
     console.log(' - Beard Oil (20 in stock)');
     console.log(' - Hair Wax (15 in stock)');

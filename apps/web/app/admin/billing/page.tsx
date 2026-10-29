@@ -19,7 +19,17 @@ import {
   ChevronRight,
   RefreshCw,
   Search,
+  Crown,
+  Award,
+  Sparkles,
+  X,
+  Check,
 } from 'lucide-react';
+import {
+  CustomerMembership,
+  CustomerLoyaltySummary,
+  LoyaltySettings,
+} from '@barbershop/shared';
 
 interface InvoiceLineItem {
   type: 'service' | 'product';
@@ -57,7 +67,18 @@ export default function AdminBillingPage() {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [workerId, setWorkerId] = useState<string | null>(null);
 
-  // Line items
+  // Customer Catalog & Search
+  const [allCustomers, setAllCustomers] = useState<any[]>([]);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+
+  // Phase 2: Loyalty & Memberships State
+  const [customerLoyalty, setCustomerLoyalty] = useState<CustomerLoyaltySummary | null>(null);
+  const [activeMembership, setActiveMembership] = useState<CustomerMembership | null>(null);
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState<number>(0);
+
+  // Line items & Manual/VIP discount
   const [items, setItems] = useState<InvoiceLineItem[]>([]);
   const [discountPaise, setDiscountPaise] = useState<number>(0);
 
@@ -85,16 +106,45 @@ export default function AdminBillingPage() {
     loadUnbilledAppointments();
   }, []);
 
+  // When customerId changes, load loyalty and membership details
+  useEffect(() => {
+    if (customerId) {
+      loadCustomerPerks(customerId);
+    } else {
+      setCustomerLoyalty(null);
+      setActiveMembership(null);
+      setRedeemPoints(0);
+    }
+  }, [customerId]);
+
+  async function loadCustomerPerks(cId: string) {
+    try {
+      const [loyaltyRes, memRes] = await Promise.all([
+        apiRequest<CustomerLoyaltySummary>(`/loyalty/customer/${cId}`).catch(() => null),
+        apiRequest<CustomerMembership | null>(`/memberships/customer/${cId}/active`).catch(() => null),
+      ]);
+      setCustomerLoyalty(loyaltyRes);
+      setActiveMembership(memRes);
+      setRedeemPoints(0);
+    } catch {
+      // Perks load gracefully
+    }
+  }
+
   async function loadCatalog() {
     try {
-      const [sRes, pRes, wRes] = await Promise.all([
-        apiRequest<{ items: any[] }>('/services?limit=100'),
-        apiRequest<{ items: any[] }>('/products?activeOnly=true&limit=100'),
-        apiRequest<{ items: any[] }>('/workers?limit=100'),
+      const [sRes, pRes, wRes, cRes, setRes] = await Promise.all([
+        apiRequest<{ items: any[] }>('/services?limit=100').catch(() => ({ items: [] })),
+        apiRequest<{ items: any[] }>('/products?activeOnly=true&limit=100').catch(() => ({ items: [] })),
+        apiRequest<{ items: any[] }>('/workers?limit=100').catch(() => ({ items: [] })),
+        apiRequest<{ items: any[] }>('/customers?limit=100').catch(() => ({ items: [] })),
+        apiRequest<LoyaltySettings>('/loyalty/settings').catch(() => null),
       ]);
       setServices(sRes.items || []);
       setProducts(pRes.items || []);
       setWorkers(wRes.items || []);
+      setAllCustomers(cRes.items || []);
+      if (setRes) setLoyaltySettings(setRes);
     } catch {
       // Catalogs load gracefully
     }
@@ -129,9 +179,9 @@ export default function AdminBillingPage() {
     if (!apt) return;
 
     setCustomerName(apt.customerName);
-    setCustomerPhone(apt.customerPhone);
-    setCustomerId(apt.customerId);
-    setWorkerId(apt.workerId);
+    setCustomerPhone(apt.customerPhone || '');
+    setCustomerId(apt.customerId || null);
+    setWorkerId(apt.workerId || null);
 
     // populate line items from appointment services
     const aptItems: InvoiceLineItem[] = apt.services.map((s: any) => ({
@@ -142,6 +192,26 @@ export default function AdminBillingPage() {
       unitPricePaise: s.unitPricePaise,
     }));
     setItems(aptItems);
+  }
+
+  function handleSelectCustomer(c: any) {
+    setCustomerId(c.id);
+    setCustomerName(c.name);
+    setCustomerPhone(c.phone || '');
+    if (c.preferredWorkerId) {
+      setWorkerId(c.preferredWorkerId);
+    }
+    setShowCustomerDropdown(false);
+    setCustomerSearchQuery('');
+  }
+
+  function handleClearCustomer() {
+    setCustomerId(null);
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerLoyalty(null);
+    setActiveMembership(null);
+    setRedeemPoints(0);
   }
 
   function addServiceItem(serviceId: string) {
@@ -157,6 +227,37 @@ export default function AdminBillingPage() {
         unitPricePaise: s.pricePaise,
       },
     ]);
+  }
+
+  function claimComplimentaryService(serviceId: string, serviceName: string) {
+    setItems([
+      ...items,
+      {
+        type: 'service',
+        itemId: serviceId,
+        itemName: `${serviceName} (VIP Complimentary)`,
+        quantity: 1,
+        unitPricePaise: 0,
+      },
+    ]);
+  }
+
+  function applyMembershipDiscounts() {
+    if (!activeMembership) return;
+    let sDiscount = 0;
+    let pDiscount = 0;
+    for (const it of items) {
+      if (it.type === 'service' && it.unitPricePaise > 0) {
+        sDiscount += Math.round(
+          (it.quantity * it.unitPricePaise * (activeMembership.discountPercentServices || 0)) / 100
+        );
+      } else if (it.type === 'product' && it.unitPricePaise > 0) {
+        pDiscount += Math.round(
+          (it.quantity * it.unitPricePaise * (activeMembership.discountPercentProducts || 0)) / 100
+        );
+      }
+    }
+    setDiscountPaise(sDiscount + pDiscount);
   }
 
   function addProductItem(productId: string) {
@@ -189,18 +290,58 @@ export default function AdminBillingPage() {
     setItems(items.filter((_, idx) => idx !== index));
   }
 
+  // Financial calculations
   const subtotalPaise = items.reduce(
     (acc, it) => acc + it.quantity * it.unitPricePaise,
     0
   );
-  const totalPaise = Math.max(0, subtotalPaise - discountPaise);
+
+  const pointValuePaise = loyaltySettings?.pointValuePaise ?? 100;
+  const minRedeemPoints = loyaltySettings?.minRedeemPoints ?? 50;
+  const maxDiscountPercentage = loyaltySettings?.maxDiscountPercentage ?? 50;
+
+  const pointsDiscountPaise = redeemPoints > 0 ? redeemPoints * pointValuePaise : 0;
+  const totalDiscountPaise = discountPaise + pointsDiscountPaise;
+  const totalPaise = Math.max(0, subtotalPaise - totalDiscountPaise);
   const changeDuePaise = Math.max(0, cashTendered * 100 - totalPaise);
+
+  // Maximum points applicable for this bill
+  const maxAllowedPointsByBill = Math.floor(
+    (subtotalPaise * (maxDiscountPercentage / 100)) / pointValuePaise
+  );
+  const maxApplicablePoints = Math.min(
+    customerLoyalty?.pointsBalance ?? 0,
+    maxAllowedPointsByBill
+  );
+
+  const filteredCustomers = customerSearchQuery.trim()
+    ? allCustomers.filter(
+        (c) =>
+          c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+          (c.phone && c.phone.includes(customerSearchQuery))
+      )
+    : allCustomers.slice(0, 8);
 
   async function handleCheckout(e: React.FormEvent) {
     e.preventDefault();
     if (items.length === 0) {
       alert('Please add at least one line item (service or product).');
       return;
+    }
+
+    if (redeemPoints > 0) {
+      if (redeemPoints < minRedeemPoints) {
+        alert(`Minimum ${minRedeemPoints} points required to redeem.`);
+        return;
+      }
+      if (redeemPoints > (customerLoyalty?.pointsBalance ?? 0)) {
+        alert('Cannot redeem more points than customer balance.');
+        return;
+      }
+      if (pointsDiscountPaise > Math.floor(subtotalPaise * (maxDiscountPercentage / 100))) {
+        alert(`Points redemption cannot exceed ${maxDiscountPercentage}% of total bill.`);
+        return;
+      }
     }
 
     try {
@@ -215,11 +356,13 @@ export default function AdminBillingPage() {
           customerId: customerId || undefined,
           workerId: workerId || undefined,
           discountPaise,
+          redeemPoints: redeemPoints > 0 ? redeemPoints : undefined,
+          customerMembershipId: activeMembership ? activeMembership.id : undefined,
           items,
         }),
       });
 
-      // 2. Record Payment
+      // 2. Record Payment if total is positive
       if (totalPaise > 0) {
         await apiRequest(`/billing/invoices/${invoice.id}/pay`, {
           method: 'POST',
@@ -249,7 +392,9 @@ export default function AdminBillingPage() {
       setSelectedAppointmentId('');
       setCustomerName('');
       setCustomerPhone('');
+      setCustomerId(null);
       setDiscountPaise(0);
+      setRedeemPoints(0);
       setCashTendered(0);
       setUpiRef('');
       loadUnbilledAppointments();
@@ -325,10 +470,71 @@ export default function AdminBillingPage() {
             )}
 
             {/* Customer & Staff Info */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
-              <h3 className="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-4 flex items-center gap-2">
-                <User className="w-4 h-4 text-amber-400" /> Customer & Stylist
-              </h3>
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                  <User className="w-4 h-4 text-amber-400" /> Customer & Stylist
+                </h3>
+                {customerId && (
+                  <button
+                    type="button"
+                    onClick={handleClearCustomer}
+                    className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1"
+                  >
+                    <X className="w-3.5 h-3.5" /> Clear / Walk-in
+                  </button>
+                )}
+              </div>
+
+              {/* Customer Search / Autocomplete bar */}
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="text"
+                      value={customerSearchQuery}
+                      onChange={(e) => {
+                        setCustomerSearchQuery(e.target.value);
+                        setShowCustomerDropdown(true);
+                      }}
+                      onFocus={() => setShowCustomerDropdown(true)}
+                      placeholder="Search existing customer by name or phone..."
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  {showCustomerDropdown && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerDropdown(false)}
+                      className="text-xs text-slate-400 hover:text-white px-2 py-1"
+                    >
+                      Close
+                    </button>
+                  )}
+                </div>
+
+                {showCustomerDropdown && filteredCustomers.length > 0 && (
+                  <div className="absolute z-20 top-full mt-1.5 left-0 right-0 bg-slate-950 border border-slate-800 rounded-xl shadow-2xl overflow-hidden max-h-48 overflow-y-auto">
+                    {filteredCustomers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleSelectCustomer(c)}
+                        className="w-full p-2.5 text-left text-xs hover:bg-slate-900 flex items-center justify-between border-b border-slate-800/40 last:border-0"
+                      >
+                        <div>
+                          <div className="font-bold text-white">{c.name}</div>
+                          <div className="text-[10px] text-slate-400">{c.phone || 'No phone'}</div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Customer Name, Phone & Barber Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[11px] text-slate-400 mb-1">Customer Name</label>
@@ -366,6 +572,114 @@ export default function AdminBillingPage() {
                   </select>
                 </div>
               </div>
+
+              {/* PHASE 2: Customer Loyalty & Membership Badges */}
+              {(customerLoyalty || activeMembership) && (
+                <div className="pt-3 border-t border-slate-800/80 space-y-3">
+                  {/* VIP Membership Banner */}
+                  {activeMembership && (
+                    <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-4 h-4 text-amber-400" />
+                          <span className="font-bold text-xs text-amber-300">
+                            {activeMembership.planName}
+                          </span>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+                            Active
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          Valid till {new Date(activeMembership.endDate).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      {/* Membership Perks */}
+                      <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                        {activeMembership.discountPercentServices > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 border border-amber-500/20 text-amber-200">
+                            ✂️ {activeMembership.discountPercentServices}% Off Services
+                          </span>
+                        )}
+                        {activeMembership.discountPercentProducts > 0 && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 border border-amber-500/20 text-amber-200">
+                            📦 {activeMembership.discountPercentProducts}% Off Products
+                          </span>
+                        )}
+                        {activeMembership.pointsMultiplier > 1 && (
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 border border-amber-500/20 text-amber-200">
+                            ⚡ {activeMembership.pointsMultiplier}x Points
+                          </span>
+                        )}
+
+                        {/* Quick 1-click VIP Discount button */}
+                        {(activeMembership.discountPercentServices > 0 || activeMembership.discountPercentProducts > 0) && (
+                          <button
+                            type="button"
+                            onClick={applyMembershipDiscounts}
+                            className="ml-auto px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold flex items-center gap-1 transition-all"
+                          >
+                            <Sparkles className="w-3 h-3" /> Apply VIP Discounts
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Included Complimentary Services Quota */}
+                      {activeMembership.includedServicesUsage && activeMembership.includedServicesUsage.length > 0 && (
+                        <div className="pt-2 border-t border-amber-500/20 space-y-1.5">
+                          <div className="text-[10px] font-semibold text-amber-400/90 uppercase tracking-wider">
+                            Included Complimentary Services:
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {activeMembership.includedServicesUsage.map((inc) => (
+                              <div
+                                key={inc.serviceId}
+                                className="flex items-center justify-between p-2 rounded-xl bg-slate-950/90 border border-slate-800 text-[11px]"
+                              >
+                                <div>
+                                  <div className="font-semibold text-white">{inc.serviceName}</div>
+                                  <div className="text-[10px] text-slate-400">
+                                    {inc.remainingCount} / {inc.totalAllowed} remaining
+                                  </div>
+                                </div>
+                                {inc.remainingCount > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => claimComplimentaryService(inc.serviceId, inc.serviceName)}
+                                    className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold"
+                                  >
+                                    + Claim Free
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 font-semibold">Exhausted</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Loyalty Points Pill */}
+                  {customerLoyalty && (
+                    <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Award className="w-4 h-4 text-amber-400" />
+                        <div>
+                          <span className="text-slate-400">Customer Loyalty Balance: </span>
+                          <span className="font-bold text-amber-400">
+                            {customerLoyalty.pointsBalance} pts
+                          </span>
+                          <span className="text-[11px] text-slate-500 ml-1">
+                            (Worth {formatINR(customerLoyalty.monetaryValuePaise)})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Quick Catalog Adder */}
@@ -499,14 +813,14 @@ export default function AdminBillingPage() {
               </h3>
 
               {/* Price Breakdown */}
-              <div className="space-y-2 text-xs">
+              <div className="space-y-2.5 text-xs">
                 <div className="flex justify-between text-slate-400">
                   <span>Subtotal:</span>
                   <span className="font-mono text-slate-200">{formatINR(subtotalPaise)}</span>
                 </div>
 
                 <div className="flex justify-between items-center text-slate-400">
-                  <span>Discount (₹):</span>
+                  <span>Direct / VIP Discount (₹):</span>
                   <input
                     type="number"
                     min="0"
@@ -519,6 +833,75 @@ export default function AdminBillingPage() {
                     className="w-24 bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-right text-xs text-white"
                   />
                 </div>
+
+                {/* PHASE 2: Loyalty Points Redemption Box */}
+                {customerId && customerLoyalty && (loyaltySettings?.isEnabled ?? true) && (
+                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
+                        <Award className="w-3.5 h-3.5" /> Redeem Points
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        {customerLoyalty.pointsBalance} pts available
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        max={customerLoyalty.pointsBalance}
+                        value={redeemPoints || ''}
+                        onChange={(e) => {
+                          const val = Math.max(0, parseInt(e.target.value) || 0);
+                          setRedeemPoints(val);
+                        }}
+                        placeholder="0 pts"
+                        className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setRedeemPoints(maxApplicablePoints)}
+                        disabled={maxApplicablePoints < minRedeemPoints}
+                        className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-30 border border-amber-500/30 text-amber-300 text-[10px] font-bold"
+                      >
+                        Max ({maxApplicablePoints})
+                      </button>
+                      {redeemPoints > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setRedeemPoints(0)}
+                          className="px-2 py-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white text-[10px]"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {redeemPoints > 0 && (
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                        <span>Points Discount:</span>
+                        <span>-{formatINR(pointsDiscountPaise)}</span>
+                      </div>
+                    )}
+
+                    {redeemPoints > 0 && redeemPoints < minRedeemPoints && (
+                      <p className="text-[10px] text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Min {minRedeemPoints} points required
+                      </p>
+                    )}
+                    {redeemPoints > customerLoyalty.pointsBalance && (
+                      <p className="text-[10px] text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Exceeds available balance
+                      </p>
+                    )}
+                    {pointsDiscountPaise > Math.floor(subtotalPaise * (maxDiscountPercentage / 100)) && (
+                      <p className="text-[10px] text-rose-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Max {maxDiscountPercentage}% bill coverage
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-slate-800 flex justify-between text-base font-black text-white">
                   <span>Grand Total:</span>
@@ -579,14 +962,13 @@ export default function AdminBillingPage() {
                 </div>
               )}
 
-              {/* UPI QR Display (Rule 28) */}
+              {/* UPI QR Display */}
               {paymentMethod === 'upi_qr' && (
                 <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-center space-y-3">
                   <p className="text-xs font-semibold text-slate-300">
                     Scan using Google Pay, PhonePe, Paytm, or BHIM
                   </p>
                   <div className="w-44 h-44 bg-white rounded-2xl p-2 mx-auto flex items-center justify-center shadow-lg">
-                    {/* Live Shop UPI QR or placeholder fallback */}
                     <img
                       src="/api/v1/shops/upi-qr"
                       alt="Shop UPI QR"
@@ -650,7 +1032,7 @@ export default function AdminBillingPage() {
                   </button>
                 </div>
                 <p>
-                  Invoice #{successInvoice.invoiceNumber} recorded successfully. Product inventory updated.
+                  Invoice #{successInvoice.invoiceNumber} recorded successfully. Loyalty points & product inventory updated.
                 </p>
                 <div className="text-right font-black text-base text-white">
                   Total: {formatINR(successInvoice.totalPaise)}

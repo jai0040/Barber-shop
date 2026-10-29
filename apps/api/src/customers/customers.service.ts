@@ -159,7 +159,7 @@ export class CustomersService {
   }
 
   // ================= customer self-service (a customer account acting inside ONE shop) =================
-  private async shopBySlug(slug: string) {
+  async shopBySlug(slug: string) {
     const s = await this.db.tenant({ publicRead: true }, async (c) => (await c.query('SELECT id FROM shops WHERE slug=$1', [slug])).rows[0]);
     if (!s) throw nf('Shop');
     return s.id as string;
@@ -172,6 +172,13 @@ export class CustomersService {
       if (r) return { status: 'linked', profile: selfOut(r) };
       const pending = (await c.query('SELECT 1 FROM customers WHERE pending_user_id=$1 AND archived_at IS NULL', [ctx.userId])).rowCount;
       return { status: pending ? 'pending' : 'not_joined' }; // pending: nothing about the record is revealed
+    });
+  }
+
+  async myCustomerId(ctx: AuthContext, shopId: string): Promise<string | null> {
+    return this.db.tenant({ shopId }, async (c) => {
+      const r = (await c.query('SELECT id FROM customers WHERE user_id = $1 AND archived_at IS NULL', [ctx.userId])).rows[0];
+      return r ? r.id : null;
     });
   }
 

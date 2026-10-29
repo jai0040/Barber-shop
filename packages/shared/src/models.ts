@@ -209,3 +209,96 @@ export interface FinanceSummary {
   totalExpensesPaise: number;
   netResultPaise: number;
 }
+
+// Phase 2: Loyalty & Memberships
+export interface LoyaltySettings {
+  id: string;
+  shopId: string;
+  isEnabled: boolean;
+  earnPerRupeePaise: number; // e.g. 10000 = 1 point per Rs 100 spent
+  pointValuePaise: number;   // e.g. 100 = 1 point is worth Rs 1
+  minRedeemPoints: number;   // minimum points required to redeem
+  maxDiscountPercentage: number; // max % of bill that can be covered by points
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type LoyaltyTransactionType =
+  | 'earn_invoice'
+  | 'redeem_invoice'
+  | 'manual_adjustment'
+  | 'membership_bonus'
+  | 'welcome_bonus'
+  | 'reversal';
+
+export interface LoyaltyTransaction {
+  id: string;
+  shopId: string;
+  customerId: string;
+  pointsDelta: number;
+  balanceAfter: number;
+  type: LoyaltyTransactionType;
+  invoiceId?: string | null;
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface CustomerLoyaltySummary {
+  customerId: string;
+  customerName: string;
+  phone: string;
+  pointsBalance: number;
+  monetaryValuePaise: number;
+  recentTransactions?: LoyaltyTransaction[];
+}
+
+export interface MembershipPlanIncludedService {
+  serviceId: string;
+  serviceName?: string;
+  quantity: number;
+}
+
+export interface MembershipPlan {
+  id: string;
+  shopId: string;
+  name: string;
+  description: string | null;
+  pricePaise: number;
+  durationDays: number;
+  discountPercentServices: number;
+  discountPercentProducts: number;
+  pointsMultiplier: number;
+  status: 'active' | 'archived';
+  includedServices: MembershipPlanIncludedService[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerMembership {
+  id: string;
+  shopId: string;
+  customerId: string;
+  customerName?: string;
+  customerPhone?: string;
+  planId: string;
+  planName: string;
+  startDate: string;
+  endDate: string;
+  status: 'active' | 'expired' | 'cancelled';
+  discountPercentServices: number;
+  discountPercentProducts: number;
+  pointsMultiplier: number;
+  invoiceId?: string | null;
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  includedServicesUsage?: Array<{
+    serviceId: string;
+    serviceName: string;
+    totalAllowed: number;
+    usedCount: number;
+    remainingCount: number;
+  }>;
+}

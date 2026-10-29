@@ -5,9 +5,9 @@ import { PERMISSIONS } from '@barbershop/shared';
 
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../migrations');
 /** Tables the application role may only INSERT/SELECT (append-only ledgers). */
-const APPEND_ONLY = ['audit_logs', 'appointment_status_history'];
+const APPEND_ONLY = ['audit_logs', 'appointment_status_history', 'customer_loyalty_ledger', 'customer_membership_service_usages'];
 /** Records that are cancelled/archived but never physically deleted by the application (history & money trail). */
-const NO_DELETE = ['appointments', 'appointment_services'];
+const NO_DELETE = ['appointments', 'appointment_services', 'customer_memberships'];
 
 export async function migrate(ownerUrl: string, appUrl: string, log: (m: string) => void = console.log) {
   const c = new Client({ connectionString: ownerUrl });

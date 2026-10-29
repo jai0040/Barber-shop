@@ -4,6 +4,8 @@ import { AuthContext, Effective } from '../common/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { slugParam } from '../shops/shops.schemas';
 import { CustomersService } from './customers.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { MembershipsService } from '../memberships/memberships.service';
 import { createCustomerSchema, listCustomersSchema, selfUpdateSchema, updateCustomerSchema } from './customers.schemas';
 
 const ID = () => Param('id', ParseUUIDPipe);
@@ -28,9 +30,30 @@ export class CustomersController {
 @CustomerOnly()
 @Controller('me/shops/:slug')
 export class MyCustomerController {
-  constructor(private svc: CustomersService) {}
+  constructor(
+    private svc: CustomersService,
+    private loyalty: LoyaltyService,
+    private memberships: MembershipsService
+  ) {}
+
   @Get('profile') profile(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string) { return this.svc.myProfile(ctx, slug); }
   @Post('join') @HttpCode(200) join(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string) { return this.svc.join(ctx, slug); }
   @Patch('profile')
   update(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string, @Body(new ZodValidationPipe(selfUpdateSchema)) dto: any) { return this.svc.updateMyProfile(ctx, slug, dto); }
+
+  @Get('loyalty')
+  async myLoyalty(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string) {
+    const shopId = await this.svc.shopBySlug(slug);
+    const custId = await this.svc.myCustomerId(ctx, shopId);
+    if (!custId) return null;
+    return this.loyalty.getCustomerSummary(shopId, custId);
+  }
+
+  @Get('membership')
+  async myMembership(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string) {
+    const shopId = await this.svc.shopBySlug(slug);
+    const custId = await this.svc.myCustomerId(ctx, shopId);
+    if (!custId) return null;
+    return this.memberships.getActiveCustomerMembership(shopId, custId);
+  }
 }

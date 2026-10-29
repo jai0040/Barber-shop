@@ -19,6 +19,8 @@ export class BillingService {
       customerId?: string | null;
       workerId?: string | null;
       discountPaise?: number;
+      redeemPoints?: number;
+      customerMembershipId?: string | null;
       items: Array<{
         type: 'service' | 'product';
         itemId?: string | null;
@@ -34,7 +36,57 @@ export class BillingService {
       for (const it of dto.items) {
         subtotal += it.unitPricePaise * it.quantity;
       }
-      const discount = dto.discountPaise ?? 0;
+      let discount = dto.discountPaise ?? 0;
+
+      // Handle Points Redemption
+      let pointsToRedeem = dto.redeemPoints ?? 0;
+      let pointsDiscountPaise = 0;
+      let customerRow: any = null;
+
+      if (pointsToRedeem > 0) {
+        if (!dto.customerId) throw badRequest('Customer ID is required to redeem loyalty points.');
+
+        customerRow = (
+          await c.query(`SELECT id, loyalty_points FROM customers WHERE id = $1 AND shop_id = $2 FOR UPDATE`, [
+            dto.customerId,
+            ctx.shopId,
+          ])
+        ).rows[0];
+
+        if (!customerRow) throw notFound('Customer not found.');
+
+        // Load loyalty settings
+        const settings = (await c.query(`SELECT * FROM loyalty_settings WHERE shop_id = $1`, [ctx.shopId])).rows[0] || {
+          is_enabled: true,
+          earn_per_rupee_paise: 10000,
+          point_value_paise: 100,
+          min_redeem_points: 50,
+          max_discount_percentage: 50,
+        };
+
+        if (!settings.is_enabled) {
+          throw badRequest('Loyalty points program is not enabled for this shop.');
+        }
+
+        const currentPoints = Number(customerRow.loyalty_points || 0);
+        if (pointsToRedeem > currentPoints) {
+          throw badRequest(`Customer only has ${currentPoints} points; cannot redeem ${pointsToRedeem}.`);
+        }
+
+        if (pointsToRedeem < Number(settings.min_redeem_points)) {
+          throw badRequest(`Minimum points required to redeem is ${settings.min_redeem_points}.`);
+        }
+
+        pointsDiscountPaise = pointsToRedeem * Number(settings.point_value_paise);
+        const maxAllowedDiscount = Math.floor(subtotal * (Number(settings.max_discount_percentage) / 100));
+
+        if (pointsDiscountPaise > maxAllowedDiscount) {
+          throw badRequest(`Points redemption exceeds maximum allowed ${settings.max_discount_percentage}% of bill total.`);
+        }
+
+        discount += pointsDiscountPaise;
+      }
+
       const finalTotal = Math.max(0, subtotal - discount);
 
       // 2. Generate unique invoice number: INV-YEAR-NUMBER
@@ -53,6 +105,44 @@ export class BillingService {
         [ctx.shopId, invoiceNumber, dto.appointmentId ?? null, dto.customerId ?? null, dto.workerId ?? null, subtotal, discount, finalTotal]
       );
       const invoiceId = invRes.rows[0].id;
+
+      // Deduct loyalty points and log ledger
+      if (pointsToRedeem > 0 && customerRow) {
+        const remainingPoints = Number(customerRow.loyalty_points) - pointsToRedeem;
+        await c.query(`UPDATE customers SET loyalty_points = $1, updated_at = now() WHERE id = $2 AND shop_id = $3`, [
+          remainingPoints,
+          dto.customerId,
+          ctx.shopId,
+        ]);
+
+        await c.query(
+          `INSERT INTO customer_loyalty_ledger (shop_id, customer_id, points_delta, balance_after, type, invoice_id, notes, created_by)
+           VALUES ($1, $2, $3, $4, 'redeem_invoice', $5, $6, $7)`,
+          [
+            ctx.shopId,
+            dto.customerId,
+            -pointsToRedeem,
+            remainingPoints,
+            invoiceId,
+            `Redeemed ${pointsToRedeem} points for Rs ${pointsDiscountPaise / 100} discount`,
+            ctx.userId,
+          ]
+        );
+      }
+
+      // Handle Customer Membership Included Service Usage
+      if (dto.customerMembershipId && dto.customerId) {
+        for (const it of dto.items) {
+          if (it.type === 'service' && it.itemId && it.unitPricePaise === 0) {
+            // Check if this was a 0-paise redeemed service under membership
+            await c.query(
+              `INSERT INTO customer_membership_service_usages (shop_id, customer_membership_id, service_id, appointment_id, invoice_id)
+               VALUES ($1, $2, $3, $4, $5)`,
+              [ctx.shopId, dto.customerMembershipId, it.itemId, dto.appointmentId ?? null, invoiceId]
+            );
+          }
+        }
+      }
 
       // 4. Insert items and decrement product inventory if product
       for (const it of dto.items) {
@@ -142,6 +232,59 @@ export class BillingService {
           invoiceId,
           ctx.shopId,
         ]);
+
+        // Award Loyalty Points if customer exists and invoice has positive paid amount
+        if (inv.customer_id && Number(inv.final_total_paise) > 0) {
+          const settings = (await c.query(`SELECT * FROM loyalty_settings WHERE shop_id = $1`, [ctx.shopId])).rows[0] || {
+            is_enabled: true,
+            earn_per_rupee_paise: 10000,
+          };
+
+          if (settings.is_enabled) {
+            // Check active membership multiplier
+            const activeMem = (
+              await c.query(
+                `SELECT p.points_multiplier
+                 FROM customer_memberships cm
+                 JOIN membership_plans p ON p.id = cm.plan_id
+                 WHERE cm.shop_id = $1 AND cm.customer_id = $2 AND cm.status = 'active'
+                   AND CURRENT_DATE BETWEEN cm.start_date AND cm.end_date
+                 LIMIT 1`,
+                [ctx.shopId, inv.customer_id]
+              )
+            ).rows[0];
+
+            const multiplier = activeMem ? Number(activeMem.points_multiplier) : 1.0;
+            const earnRate = Number(settings.earn_per_rupee_paise) || 10000;
+            const pointsToAward = Math.floor((Number(inv.final_total_paise) / earnRate) * multiplier);
+
+            if (pointsToAward > 0) {
+              const custRow = (
+                await c.query(
+                  `UPDATE customers
+                   SET loyalty_points = loyalty_points + $1, updated_at = now()
+                   WHERE id = $2 AND shop_id = $3
+                   RETURNING loyalty_points`,
+                  [pointsToAward, inv.customer_id, ctx.shopId]
+                )
+              ).rows[0];
+
+              await c.query(
+                `INSERT INTO customer_loyalty_ledger (shop_id, customer_id, points_delta, balance_after, type, invoice_id, notes, created_by)
+                 VALUES ($1, $2, $3, $4, 'earn_invoice', $5, $6, $7)`,
+                [
+                  ctx.shopId,
+                  inv.customer_id,
+                  pointsToAward,
+                  custRow.loyalty_points,
+                  invoiceId,
+                  `Earned ${pointsToAward} points from Invoice ${inv.invoice_number}`,
+                  ctx.userId,
+                ]
+              );
+            }
+          }
+        }
       }
 
       await this.audit.log(c, {
@@ -185,6 +328,48 @@ export class BillingService {
              VALUES ($1, $2, 'adjustment', $3, $4, $5, $6, $7, $8)`,
             [ctx.shopId, p.item_id, p.quantity, restored, prod.cost_price_paise, invoiceId, `Voided invoice ${inv.invoice_number} stock return`, ctx.userId]
           );
+        }
+      }
+
+      // Re-credit any redeemed loyalty points, and revoke any earned loyalty points
+      if (inv.customer_id) {
+        const txs = (
+          await c.query(
+            `SELECT points_delta, type FROM customer_loyalty_ledger WHERE invoice_id = $1 AND shop_id = $2`,
+            [invoiceId, ctx.shopId]
+          )
+        ).rows;
+
+        for (const t of txs) {
+          const delta = Number(t.points_delta);
+          if (t.type === 'redeem_invoice' && delta < 0) {
+            // Refund redeemed points
+            const refund = Math.abs(delta);
+            const custRow = (
+              await c.query(
+                `UPDATE customers SET loyalty_points = loyalty_points + $1, updated_at = now() WHERE id = $2 AND shop_id = $3 RETURNING loyalty_points`,
+                [refund, inv.customer_id, ctx.shopId]
+              )
+            ).rows[0];
+            await c.query(
+              `INSERT INTO customer_loyalty_ledger (shop_id, customer_id, points_delta, balance_after, type, invoice_id, notes, created_by)
+               VALUES ($1, $2, $3, $4, 'reversal', $5, $6, $7)`,
+              [ctx.shopId, inv.customer_id, refund, custRow.loyalty_points, invoiceId, `Refunded ${refund} points for voided invoice ${inv.invoice_number}`, ctx.userId]
+            );
+          } else if (t.type === 'earn_invoice' && delta > 0) {
+            // Revoke earned points
+            const custRow = (
+              await c.query(
+                `UPDATE customers SET loyalty_points = GREATEST(0, loyalty_points - $1), updated_at = now() WHERE id = $2 AND shop_id = $3 RETURNING loyalty_points`,
+                [delta, inv.customer_id, ctx.shopId]
+              )
+            ).rows[0];
+            await c.query(
+              `INSERT INTO customer_loyalty_ledger (shop_id, customer_id, points_delta, balance_after, type, invoice_id, notes, created_by)
+               VALUES ($1, $2, $3, $4, 'reversal', $5, $6, $7)`,
+              [ctx.shopId, inv.customer_id, -delta, custRow.loyalty_points, invoiceId, `Revoked ${delta} points for voided invoice ${inv.invoice_number}`, ctx.userId]
+            );
+          }
         }
       }
 

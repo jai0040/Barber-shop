@@ -20,7 +20,11 @@ import {
   ShieldCheck,
   ChevronRight,
   Plus,
+  Crown,
+  Award,
+  Percent,
 } from 'lucide-react';
+import { CustomerLoyaltySummary, CustomerMembership } from '@barbershop/shared';
 
 interface CustomerProfile {
   name: string;
@@ -37,6 +41,8 @@ export default function MyAccountPage() {
 
   const [session, setSession] = useState<UserSession | null>(null);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [loyalty, setLoyalty] = useState<CustomerLoyaltySummary | null>(null);
+  const [membership, setMembership] = useState<CustomerMembership | null>(null);
   const [joinStatus, setJoinStatus] = useState<'linked' | 'pending' | 'not_joined' | 'loading'>('loading');
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -67,6 +73,14 @@ export default function MyAccountPage() {
       if (res.profile) {
         setProfile(res.profile);
         setNotes(res.profile.notes || '');
+
+        // Fetch customer loyalty and active membership
+        const [lRes, mRes] = await Promise.all([
+          apiRequest<CustomerLoyaltySummary>(`/me/shops/${slug}/loyalty`).catch(() => null),
+          apiRequest<CustomerMembership>(`/me/shops/${slug}/membership`).catch(() => null),
+        ]);
+        if (lRes) setLoyalty(lRes);
+        if (mRes) setMembership(mRes);
       }
     } catch (err: any) {
       setError(err.message || 'Could not load your profile.');
@@ -214,6 +228,96 @@ export default function MyAccountPage() {
               <p className="text-xs text-amber-300/80 mt-0.5">
                 The shop has an existing record with your phone number. A staff member will verify your account during your next visit.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 2: Loyalty Rewards & VIP Membership */}
+        {joinStatus === 'linked' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Loyalty Rewards Card */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-bl-full pointer-events-none" />
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 inline-flex items-center gap-1.5">
+                    <Award className="w-3.5 h-3.5" /> Loyalty Rewards
+                  </span>
+                </div>
+                <div className="text-3xl font-black text-white mt-2">
+                  {loyalty?.pointsBalance ?? 0} <span className="text-sm font-normal text-slate-400">points</span>
+                </div>
+                <div className="text-xs text-emerald-400 font-semibold mt-1">
+                  Worth ₹{((loyalty?.monetaryValuePaise ?? 0) / 100).toFixed(2)} in checkout discounts
+                </div>
+                <p className="text-[11px] text-slate-400 mt-3 leading-relaxed">
+                  Earn points on every haircut, beard styling, and grooming product purchase. Redeem points at the counter!
+                </p>
+              </div>
+            </div>
+
+            {/* VIP Membership Card */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 inline-flex items-center gap-1.5">
+                    <Crown className="w-3.5 h-3.5" /> VIP Membership
+                  </span>
+                  {membership && (
+                    <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                {membership ? (
+                  <div>
+                    <h3 className="text-lg font-black text-white">{membership.planName}</h3>
+                    <div className="text-xs text-slate-400 mt-0.5">Valid until {membership.endDate}</div>
+
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      <span className="text-[10px] bg-slate-800 text-emerald-300 font-bold px-2 py-1 rounded-lg">
+                        {membership.discountPercentServices}% Off Services
+                      </span>
+                      <span className="text-[10px] bg-slate-800 text-emerald-300 font-bold px-2 py-1 rounded-lg">
+                        {membership.discountPercentProducts}% Off Products
+                      </span>
+                      <span className="text-[10px] bg-slate-800 text-amber-300 font-bold px-2 py-1 rounded-lg">
+                        {membership.pointsMultiplier}x Points
+                      </span>
+                    </div>
+
+                    {membership.includedServicesUsage && membership.includedServicesUsage.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                          Complimentary Quota:
+                        </span>
+                        {membership.includedServicesUsage.map((u, idx) => (
+                          <div key={idx} className="flex justify-between text-xs text-amber-200">
+                            <span>{u.serviceName}:</span>
+                            <span className="font-bold">{u.remainingCount} remaining (of {u.totalAllowed})</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Join the VIP Grooming Club</h3>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                      Unlock 20% off all styling, retail product discounts, and complimentary services.
+                    </p>
+                    <div className="mt-4">
+                      <Link
+                        href={`/${slug}/memberships`}
+                        className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-bold"
+                      >
+                        Explore Membership Plans <ChevronRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
