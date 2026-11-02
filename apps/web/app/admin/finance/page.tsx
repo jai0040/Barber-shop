@@ -17,7 +17,15 @@ import {
   PieChart,
   ArrowUpRight,
   ArrowDownRight,
+  Users,
+  Award,
+  Sparkles,
+  AlertCircle,
+  Clock,
+  ShieldCheck,
+  Check,
 } from 'lucide-react';
+import { WorkerEarningsSummary } from '@barbershop/shared';
 
 interface FinanceSummary {
   revenuePaise: number;
@@ -39,11 +47,30 @@ interface ExpenseItem {
 }
 
 export default function AdminFinancePage() {
+  const [activeTab, setActiveTab] = useState<'expenses' | 'commissions'>('expenses');
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Phase 3: Staff Commissions State
+  const [commissions, setCommissions] = useState<WorkerEarningsSummary[]>([]);
+  const [commissionsLoading, setCommissionsLoading] = useState(false);
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [payoutAmountRupees, setPayoutAmountRupees] = useState('');
+  const [payoutMethod, setPayoutMethod] = useState<'cash' | 'bank_transfer' | 'upi'>('upi');
+  const [payoutNotes, setPayoutNotes] = useState('');
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [recordExpense, setRecordExpense] = useState(true);
+
+  // Manual Adjustment Form
+  const [adjustAmountRupees, setAdjustAmountRupees] = useState('');
+  const [adjustType, setAdjustType] = useState<'manual_adjustment' | 'tip'>('manual_adjustment');
+  const [adjustNotes, setAdjustNotes] = useState('');
 
   // New Expense Modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -56,6 +83,7 @@ export default function AdminFinancePage() {
 
   useEffect(() => {
     loadFinanceData();
+    loadCommissions();
   }, []);
 
   async function loadFinanceData() {
@@ -67,16 +95,17 @@ export default function AdminFinancePage() {
         apiRequest<{ items: any[] }>('/finance/expenses?limit=100'),
         apiRequest<{ categories: any[] }>('/finance/categories'),
       ]);
+
       setSummary(sumRes);
       setExpenses(
         (expRes.items || []).map((e: any) => ({
           id: e.id,
-          categoryName: e.categoryName ?? e.category_name ?? 'General',
-          amountPaise: e.amountPaise ?? e.amount_paise,
-          expenseDate: e.expenseDate ?? e.expense_date,
-          paymentMode: e.paymentMode ?? e.payment_mode,
-          vendorName: e.vendorName ?? e.vendor_name,
-          description: e.description,
+          categoryName: e.category_name ?? e.categoryName ?? 'General Expense',
+          amountPaise: Number(e.amount_paise ?? e.amountPaise ?? 0),
+          expenseDate: e.date ?? e.expense_date ?? e.expenseDate,
+          paymentMode: e.payment_method ?? e.payment_mode ?? e.paymentMode ?? 'cash',
+          vendorName: e.vendor_name ?? e.vendorName ?? null,
+          description: e.description ?? null,
           createdAt: e.created_at ?? e.createdAt,
         }))
       );
@@ -88,6 +117,18 @@ export default function AdminFinancePage() {
       setError(err.message || 'Failed to load financial records.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadCommissions() {
+    try {
+      setCommissionsLoading(true);
+      const res = await apiRequest<WorkerEarningsSummary[]>('/commission/summary');
+      setCommissions(res || []);
+    } catch {
+      // Gracefully handle
+    } finally {
+      setCommissionsLoading(false);
     }
   }
 
@@ -134,183 +175,559 @@ export default function AdminFinancePage() {
     }
   }
 
+  async function handleRecordPayout(e: React.FormEvent) {
+    e.preventDefault();
+    const rupees = parseFloat(payoutAmountRupees);
+    if (!rupees || rupees <= 0 || !selectedWorkerId) {
+      alert('Please select a worker and enter a valid payout amount.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiRequest('/commission/payout', {
+        method: 'POST',
+        body: JSON.stringify({
+          workerId: selectedWorkerId,
+          amountPaise: Math.round(rupees * 100),
+          paymentMethod: payoutMethod,
+          periodStartDate: periodStart || undefined,
+          periodEndDate: periodEnd || undefined,
+          notes: payoutNotes.trim() || undefined,
+          recordExpense,
+        }),
+      });
+
+      setShowPayoutModal(false);
+      setPayoutAmountRupees('');
+      setPayoutNotes('');
+      setPeriodStart('');
+      setPeriodEnd('');
+      await Promise.all([loadCommissions(), loadFinanceData()]);
+      alert('Payout recorded and settled successfully!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to record payout.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleAdjustCommission(e: React.FormEvent) {
+    e.preventDefault();
+    const rupees = parseFloat(adjustAmountRupees);
+    if (!rupees || !selectedWorkerId || !adjustNotes.trim()) {
+      alert('Please select a worker, enter an amount, and provide a remark.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await apiRequest('/commission/adjust', {
+        method: 'POST',
+        body: JSON.stringify({
+          workerId: selectedWorkerId,
+          amountPaise: Math.round(rupees * 100),
+          type: adjustType,
+          notes: adjustNotes.trim(),
+        }),
+      });
+
+      setShowAdjustModal(false);
+      setAdjustAmountRupees('');
+      setAdjustNotes('');
+      await loadCommissions();
+      alert('Commission adjustment recorded!');
+    } catch (err: any) {
+      alert(err.message || 'Failed to adjust commission.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function openPayoutForWorker(worker: WorkerEarningsSummary) {
+    setSelectedWorkerId(worker.workerId);
+    setPayoutAmountRupees(worker.balancePendingPaise > 0 ? (worker.balancePendingPaise / 100).toString() : '');
+    setShowPayoutModal(true);
+  }
+
+  const totalCommissionsEarned = commissions.reduce(
+    (acc, c) => acc + c.totalServiceCommissionPaise + c.totalProductCommissionPaise,
+    0
+  );
+  const totalTipsEarned = commissions.reduce((acc, c) => acc + c.totalTipsPaise, 0);
+  const totalCommissionsPending = commissions.reduce((acc, c) => acc + c.balancePendingPaise, 0);
+
   return (
     <AdminLayout
-      title="Financial Performance & Expenses"
+      title="Financial Performance & Payroll"
       actions={
         <div className="flex items-center gap-2">
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl">
+            <button
+              onClick={() => setActiveTab('expenses')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'expenses'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Expenses & P&L
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab('commissions');
+                loadCommissions();
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === 'commissions'
+                  ? 'bg-amber-500 text-slate-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Staff Commissions & Payouts
+            </button>
+          </div>
+
           <button
-            onClick={loadFinanceData}
-            disabled={loading}
+            onClick={() => {
+              loadFinanceData();
+              loadCommissions();
+            }}
+            disabled={loading || commissionsLoading}
             className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white"
-            title="Refresh Financials"
+            title="Refresh Data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading || commissionsLoading ? 'animate-spin' : ''}`} />
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 shadow-md"
-          >
-            <Plus className="w-4 h-4" /> Record Expense
-          </button>
+
+          {activeTab === 'expenses' ? (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 shadow-md"
+            >
+              <Plus className="w-4 h-4" /> Record Expense
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (commissions.length > 0 && !selectedWorkerId) {
+                  setSelectedWorkerId(commissions[0].workerId);
+                }
+                setShowPayoutModal(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 shadow-md"
+            >
+              <DollarSign className="w-4 h-4" /> Record Payout
+            </button>
+          )}
         </div>
       }
     >
-      {/* KPI Cards */}
-      {summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-          {/* Revenue */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Total Inflow (Revenue)
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <ArrowUpRight className="w-5 h-5" />
+      {activeTab === 'expenses' ? (
+        <>
+          {/* KPI Cards */}
+          {summary && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+              {/* Revenue */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
+                    Total Inflow (Revenue)
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                    <ArrowUpRight className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-3xl font-black text-emerald-400">
+                    {formatINR(summary.revenuePaise)}
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-slate-400 mt-2">
+                    <span>Services: {formatINR(summary.serviceRevenuePaise)}</span>
+                    <span>&bull;</span>
+                    <span>Products: {formatINR(summary.productRevenuePaise)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Expenses */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
+                    Total Outflow (Expenses)
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center">
+                    <ArrowDownRight className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-3xl font-black text-rose-400">
+                    {formatINR(summary.expensesPaise)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    Shop overheads, stock purchases & staff payroll
+                  </p>
+                </div>
+              </div>
+
+              {/* Net Result */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
+                    Net Result (Profit / Margin)
+                  </span>
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <PieChart className="w-5 h-5" />
+                  </div>
+                </div>
+                <div>
+                  <p
+                    className={`text-3xl font-black ${
+                      summary.netPaise >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    {formatINR(summary.netPaise)}
+                  </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    {summary.netPaise >= 0 ? 'Net Positive Operating Margin' : 'Operating Deficit'}
+                  </p>
+                </div>
               </div>
             </div>
-            <div>
-              <p className="text-3xl font-black text-emerald-400">
-                {formatINR(summary.revenuePaise)}
-              </p>
-              <div className="flex items-center gap-3 text-xs text-slate-400 mt-2">
-                <span>Services: {formatINR(summary.serviceRevenuePaise)}</span>
-                <span>&bull;</span>
-                <span>Products: {formatINR(summary.productRevenuePaise)}</span>
+          )}
+
+          {/* Expenses Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                <Tag className="w-4 h-4 text-amber-400" /> Operating Expenses ({expenses.length})
+              </h3>
+            </div>
+
+            {loading ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-500" />
+                Loading ledger records...
               </div>
+            ) : expenses.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                No expenses logged yet. Click &quot;Record Expense&quot; above to add your first operating cost.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-5 py-3.5">Date</th>
+                      <th className="px-5 py-3.5">Category</th>
+                      <th className="px-5 py-3.5">Remarks / Details</th>
+                      <th className="px-5 py-3.5">Payment Mode</th>
+                      <th className="px-5 py-3.5 text-right">Amount</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300">
+                    {expenses.map((exp) => (
+                      <tr key={exp.id} className="hover:bg-slate-800/40">
+                        <td className="px-5 py-4 whitespace-nowrap text-slate-400">
+                          {new Date(exp.expenseDate).toLocaleDateString()}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-white">
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px]">
+                            {exp.categoryName}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-slate-200">
+                            {exp.description || 'Operating Expense'}
+                          </div>
+                          {exp.vendorName && (
+                            <div className="text-[10px] text-slate-500">Paid to: {exp.vendorName}</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 uppercase font-bold text-[10px] text-slate-400">
+                          {exp.paymentMode}
+                        </td>
+                        <td className="px-5 py-4 text-right font-black text-rose-400">
+                          -{formatINR(exp.amountPaise)}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            onClick={() => handleDeleteExpense(exp.id)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            title="Delete Record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        /* PHASE 3: STAFF COMMISSIONS & PAYOUTS TAB */
+        <div className="space-y-6">
+          {/* Commissions Summary KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider block">
+                Total Commissions Earned
+              </span>
+              <p className="text-3xl font-black text-white mt-2">
+                {formatINR(totalCommissionsEarned)}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">From completed haircuts & product sales</p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider block">
+                Total Tips Collected
+              </span>
+              <p className="text-3xl font-black text-amber-400 mt-2">
+                {formatINR(totalTipsEarned)}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Paid directly by satisfied clients</p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider block">
+                Unsettled Payout Liability
+              </span>
+              <p className="text-3xl font-black text-emerald-400 mt-2">
+                {formatINR(totalCommissionsPending)}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">Net pending balance owed to staff</p>
             </div>
           </div>
 
-          {/* Expenses */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Total Outflow (Expenses)
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center">
-                <ArrowDownRight className="w-5 h-5" />
-              </div>
+          {/* Workers Table */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-2">
+                <Users className="w-4 h-4 text-amber-400" /> Stylist Commission & Tips Ledger ({commissions.length})
+              </h3>
             </div>
-            <div>
-              <p className="text-3xl font-black text-rose-400">
-                {formatINR(summary.expensesPaise)}
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                Shop overheads, stock purchases & operations
-              </p>
-            </div>
-          </div>
 
-          {/* Net Result */}
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                Net Result (Profit / Margin)
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
-                <DollarSign className="w-5 h-5" />
+            {commissionsLoading ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-500" />
+                Loading staff commission balances...
               </div>
-            </div>
-            <div>
-              <p
-                className={`text-3xl font-black ${
-                  summary.netPaise >= 0 ? 'text-amber-400' : 'text-rose-400'
-                }`}
-              >
-                {formatINR(summary.netPaise)}
-              </p>
-              <p className="text-xs text-slate-400 mt-2">
-                Real-time Net: Inflow minus Outflow
-              </p>
-            </div>
+            ) : commissions.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 text-xs">
+                No active staff found. Add staff members in Worker Profiles to track commissions.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                    <tr>
+                      <th className="px-5 py-3.5">Stylist</th>
+                      <th className="px-5 py-3.5">Rates (%)</th>
+                      <th className="px-5 py-3.5">Service Comm.</th>
+                      <th className="px-5 py-3.5">Product Comm.</th>
+                      <th className="px-5 py-3.5">Tips</th>
+                      <th className="px-5 py-3.5">Total Paid Out</th>
+                      <th className="px-5 py-3.5 text-right">Pending Balance</th>
+                      <th className="px-5 py-3.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300">
+                    {commissions.map((c) => (
+                      <tr key={c.workerId} className="hover:bg-slate-800/40">
+                        <td className="px-5 py-4 font-bold text-white">
+                          {c.workerName}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-[11px] text-slate-300 font-mono">
+                            ✂️ {c.commissionRatePercent}% | 📦 {c.productCommissionRatePercent}%
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-white">
+                          {formatINR(c.totalServiceCommissionPaise)}
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-white">
+                          {formatINR(c.totalProductCommissionPaise)}
+                        </td>
+                        <td className="px-5 py-4 font-bold text-amber-400">
+                          {formatINR(c.totalTipsPaise)}
+                        </td>
+                        <td className="px-5 py-4 text-slate-400 font-semibold">
+                          {formatINR(c.totalPaidOutPaise)}
+                        </td>
+                        <td className="px-5 py-4 text-right font-black text-sm text-emerald-400">
+                          {formatINR(c.balancePendingPaise)}
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => openPayoutForWorker(c)}
+                            className="px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition-all"
+                          >
+                            Settle Payout
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Expense History Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-            Expense Ledger ({expenses.length})
-          </h3>
+      {/* RECORD PAYOUT MODAL */}
+      {showPayoutModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-400" /> Settle Commission Payout
+              </h3>
+              <button
+                onClick={() => setShowPayoutModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordPayout} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                  Stylist / Barber
+                </label>
+                <select
+                  value={selectedWorkerId}
+                  onChange={(e) => {
+                    setSelectedWorkerId(e.target.value);
+                    const w = commissions.find((x) => x.workerId === e.target.value);
+                    if (w && w.balancePendingPaise > 0) {
+                      setPayoutAmountRupees((w.balancePendingPaise / 100).toString());
+                    }
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  {commissions.map((w) => (
+                    <option key={w.workerId} value={w.workerId}>
+                      {w.workerName} (Pending: {formatINR(w.balancePendingPaise)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                  Payout Amount (₹)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={payoutAmountRupees}
+                  onChange={(e) => setPayoutAmountRupees(e.target.value)}
+                  placeholder="e.g. 5000"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={payoutMethod}
+                  onChange={(e) => setPayoutMethod(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                >
+                  <option value="upi">UPI / Instant Online</option>
+                  <option value="cash">Cash In Hand</option>
+                  <option value="bank_transfer">Bank Transfer / NEFT</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Period From</label>
+                  <input
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">Period To</label>
+                  <input
+                    type="date"
+                    value={periodEnd}
+                    onChange={(e) => setPeriodEnd(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                  Notes / Reference
+                </label>
+                <input
+                  type="text"
+                  value={payoutNotes}
+                  onChange={(e) => setPayoutNotes(e.target.value)}
+                  placeholder="e.g. Weekly settlement via GPay"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="recordExpenseCheck"
+                  checked={recordExpense}
+                  onChange={(e) => setRecordExpense(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-800 text-amber-500"
+                />
+                <label htmlFor="recordExpenseCheck" className="text-xs text-slate-300">
+                  Record as shop expense under &quot;Salaries & Commissions&quot;
+                </label>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPayoutModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+                >
+                  {submitting ? 'Settling...' : 'Confirm & Settle Payout'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      )}
 
-        {loading ? (
-          <div className="p-8 text-center text-slate-500 text-xs">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-500" />
-            Loading expense ledger...
-          </div>
-        ) : expenses.length === 0 ? (
-          <div className="p-12 text-center text-slate-500 text-xs">
-            No expenses recorded yet.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                <tr>
-                  <th className="px-5 py-3.5">Date</th>
-                  <th className="px-5 py-3.5">Category</th>
-                  <th className="px-5 py-3.5">Vendor / Payee</th>
-                  <th className="px-5 py-3.5">Description</th>
-                  <th className="px-5 py-3.5">Payment Mode</th>
-                  <th className="px-5 py-3.5">Amount</th>
-                  <th className="px-5 py-3.5 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800 text-slate-300">
-                {expenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-slate-800/40">
-                    <td className="px-5 py-4 whitespace-nowrap text-slate-400">
-                      {new Date(exp.expenseDate).toLocaleDateString()}
-                    </td>
-
-                    <td className="px-5 py-4 font-semibold text-white">
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60">
-                        {exp.categoryName}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-200">
-                      {exp.vendorName || '—'}
-                    </td>
-
-                    <td className="px-5 py-4 text-slate-400 max-w-xs truncate">
-                      {exp.description || '—'}
-                    </td>
-
-                    <td className="px-5 py-4 uppercase font-mono text-[11px] text-slate-400">
-                      {exp.paymentMode}
-                    </td>
-
-                    <td className="px-5 py-4 font-bold text-rose-400 whitespace-nowrap">
-                      -{formatINR(exp.amountPaise)}
-                    </td>
-
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        onClick={() => handleDeleteExpense(exp.id)}
-                        className="text-slate-500 hover:text-rose-400 transition-colors p-1"
-                        title="Delete Record"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL: Record Expense */}
+      {/* NEW EXPENSE MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-amber-400" /> Record Shop Expense
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800 mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Plus className="w-4 h-4 text-amber-400" /> Log Shop Expense
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
@@ -320,10 +737,10 @@ export default function AdminFinancePage() {
               </button>
             </div>
 
-            <form onSubmit={handleAddExpense} className="mt-4 space-y-3">
+            <form onSubmit={handleAddExpense} className="space-y-4 text-xs">
               <div>
                 <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
-                  Expense Category
+                  Category
                 </label>
                 <select
                   value={catId}
@@ -335,18 +752,16 @@ export default function AdminFinancePage() {
                       {c.name}
                     </option>
                   ))}
-                  <option value="">General Overhead</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
-                  Amount (₹) *
+                  Amount (₹)
                 </label>
                 <input
                   type="number"
                   step="0.01"
-                  min="0.01"
                   value={amountRupees}
                   onChange={(e) => setAmountRupees(e.target.value)}
                   placeholder="e.g. 1500.00"

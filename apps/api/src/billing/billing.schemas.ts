@@ -13,6 +13,7 @@ export const createInvoiceSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
   workerId: z.string().uuid().optional().nullable(),
   discountPaise: z.number().int().min(0).default(0),
+  tipPaise: z.number().int().min(0).default(0),
   redeemPoints: z.number().int().min(0).optional(),
   customerMembershipId: z.string().uuid().optional().nullable(),
   items: z.array(invoiceItemSchema).min(1, 'Invoice must have at least one line item'),

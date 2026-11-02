@@ -10,11 +10,18 @@ export const createWorkerSchema = z.object({
   displayName: z.string().trim().min(2).max(60),
   phone: z.string().trim().optional(),
   email: z.string().trim().optional(),
+  commissionRatePercent: z.number().min(0).max(100).optional(),
+  productCommissionRatePercent: z.number().min(0).max(100).optional(),
   serviceIds: z.array(uuid).optional(),
   login: loginSchema.optional(),
   linkUserId: uuid.optional(), // e.g. the owner who also cuts hair
 }).refine((v) => !(v.login && v.linkUserId), { message: 'Use either a new login or an existing user, not both', path: ['linkUserId'] });
-export const updateWorkerSchema = z.object({ displayName: z.string().trim().min(2).max(60), status: z.enum(['active', 'inactive']) })
+export const updateWorkerSchema = z.object({
+  displayName: z.string().trim().min(2).max(60),
+  status: z.enum(['active', 'inactive']),
+  commissionRatePercent: z.number().min(0).max(100),
+  productCommissionRatePercent: z.number().min(0).max(100),
+})
   .partial().refine((v) => Object.keys(v).length > 0, 'Nothing to update');
 export const addLoginSchema = loginSchema;
 export const listWorkersSchema = z.object({

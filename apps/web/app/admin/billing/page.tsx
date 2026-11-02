@@ -81,6 +81,7 @@ export default function AdminBillingPage() {
   // Line items & Manual/VIP discount
   const [items, setItems] = useState<InvoiceLineItem[]>([]);
   const [discountPaise, setDiscountPaise] = useState<number>(0);
+  const [tipPaise, setTipPaise] = useState<number>(0);
 
   // Payment State
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi_qr'>('cash');
@@ -302,7 +303,7 @@ export default function AdminBillingPage() {
 
   const pointsDiscountPaise = redeemPoints > 0 ? redeemPoints * pointValuePaise : 0;
   const totalDiscountPaise = discountPaise + pointsDiscountPaise;
-  const totalPaise = Math.max(0, subtotalPaise - totalDiscountPaise);
+  const totalPaise = Math.max(0, subtotalPaise - totalDiscountPaise) + tipPaise;
   const changeDuePaise = Math.max(0, cashTendered * 100 - totalPaise);
 
   // Maximum points applicable for this bill
@@ -356,6 +357,7 @@ export default function AdminBillingPage() {
           customerId: customerId || undefined,
           workerId: workerId || undefined,
           discountPaise,
+          tipPaise: tipPaise > 0 ? tipPaise : undefined,
           redeemPoints: redeemPoints > 0 ? redeemPoints : undefined,
           customerMembershipId: activeMembership ? activeMembership.id : undefined,
           items,
@@ -394,6 +396,7 @@ export default function AdminBillingPage() {
       setCustomerPhone('');
       setCustomerId(null);
       setDiscountPaise(0);
+      setTipPaise(0);
       setRedeemPoints(0);
       setCashTendered(0);
       setUpiRef('');
@@ -900,6 +903,51 @@ export default function AdminBillingPage() {
                         <AlertCircle className="w-3 h-3" /> Max {maxDiscountPercentage}% bill coverage
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* PHASE 3: Barber Tip Box */}
+                {workerId && (
+                  <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
+                        <Sparkles className="w-3.5 h-3.5" /> Tip for Stylist
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        100% goes to barber
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {[0, 20, 50, 100].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setTipPaise(amt * 100)}
+                          className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border transition-all ${
+                            tipPaise === amt * 100
+                              ? 'bg-amber-500 text-slate-950 border-amber-500'
+                              : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
+                          }`}
+                        >
+                          {amt === 0 ? 'None' : `+₹${amt}`}
+                        </button>
+                      ))}
+                      <div className="flex-1 flex items-center bg-slate-900 border border-slate-800 rounded-xl px-2 py-1">
+                        <span className="text-[10px] text-slate-500 mr-1">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Custom"
+                          value={tipPaise > 0 && ![2000, 5000, 10000].includes(tipPaise) ? tipPaise / 100 : ''}
+                          onChange={(e) => {
+                            const val = Math.max(0, parseFloat(e.target.value) || 0);
+                            setTipPaise(Math.round(val * 100));
+                          }}
+                          className="w-full bg-transparent text-xs text-white placeholder-slate-500 focus:outline-none text-right font-mono"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 

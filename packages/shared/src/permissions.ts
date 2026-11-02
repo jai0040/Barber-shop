@@ -53,6 +53,8 @@ export const PERMISSIONS: PermissionDef[] = [
   d('loyalty.manage', 'Configure loyalty program and manual point adjustments'),
   d('memberships.view', 'View membership plans and customer subscriptions', true),
   d('memberships.manage', 'Create/edit membership plans and subscriptions'),
+  d('commission.view', 'View worker commissions, tips, and payouts', true),
+  d('commission.manage', 'Record worker commission payouts and adjustments'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -74,13 +76,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'products.view', 'products.create', 'products.update', 'inventory.view', 'inventory.manage',
       'billing.view', 'billing.create', 'billing.void', 'payments.view', 'payments.record', 'reports.view',
       'loyalty.view', 'loyalty.manage', 'memberships.view', 'memberships.manage',
+      'commission.view', 'commission.manage',
     ),
   },
   {
     systemKey: 'worker', name: 'Worker',
     permissions: {
       ...own('dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update',
-        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view'),
+        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view'),
       ...all('services.view', 'products.view'),
     },
   },
@@ -90,7 +93,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update', 'appointments.add_service',
       'customers.view', 'customers.create', 'customers.update', 'services.view', 'products.view',
       'billing.view', 'billing.create', 'payments.view', 'payments.record',
-      'loyalty.view', 'memberships.view',
+      'loyalty.view', 'memberships.view', 'commission.view',
     ),
   },
   {

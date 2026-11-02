@@ -34,6 +34,15 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Public membership plan catalog (`/[slug]/memberships`) and customer self-service dashboard (`/my-account`).
   - Full admin management portal (`/admin/memberships`) for plans, subscriptions, and manual point adjustments.
 
+- **Staff Commission & Tip Payout Ledger (Phase 3)**:
+  - Configurable service commission (`commission_rate_percent`) and retail product commission (`product_commission_rate_percent`) per worker.
+  - Tip recording during in-shop POS checkout (`tip_paise`), added to invoice grand total and credited 100% directly to the assigned worker.
+  - Append-only `worker_commission_ledger` (`service_commission`, `product_commission`, `tip`, `manual_adjustment`, `payout`, `reversal`) with RLS isolation.
+  - Automatic commission & tip accrual upon invoice payment in `BillingService`.
+  - Automatic reversal of earned commissions and tips if an invoice is voided.
+  - Payout settlements (`worker_payouts`) with optional automatic shop expense logging under `Salaries & Commissions`.
+  - Barber self-service earnings card (`/worker`), POS billing tip selector (`/admin/billing`), admin finance payroll ledger and payout settlement modal (`/admin/finance`), and worker commission rate configuration (`/admin/workers`).
+
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
   - Worker-service capability matrix (barbers only assigned to services they can perform).
@@ -91,8 +100,8 @@ npm run dev:api
 ```
 This single command automatically:
 1. Boots embedded PostgreSQL on port `5432` with data stored in `.data/postgres/`.
-2. Applies all database migrations (`001_core.sql` through `007_loyalty_memberships.sql`).
-3. Seeds comprehensive demo data for **Classic Barber Shop** (including loyalty rules, VIP plans, and customer balances).
+2. Applies all database migrations (`001_core.sql` through `008_commission_tips_payroll.sql`).
+3. Seeds comprehensive demo data for **Classic Barber Shop** (including loyalty rules, VIP plans, barber commission rates, and customer balances).
 4. Starts the NestJS API on **`http://localhost:4000/api/v1`**.
 
 ### 3. Start the Web Frontend
@@ -157,22 +166,23 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### Test Coverage (100% Passing — 252 / 252 Tests)
+### Test Coverage (100% Passing — 260 / 260 Tests across 16 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `auth-rbac.test.ts` — Granular RBAC permission enforcement, Argon2 password hashing, refresh token family rotation, CSRF cookie security, escalation prevention.
 4. `billing-products-finance.test.ts` — Inventory stock-in, damage adjustments, POS checkout, cash change calculation, UPI QR, and net result ledger.
 5. `catalog.test.ts` — Service categories, integer paise validation, price history audit, active/archived state, public catalog grouping.
-6. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
-7. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
-8. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
-9. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-10. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-11. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-12. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-13. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-14. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-15. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+6. `commission-payroll.test.ts` — Service & product commission auto-accrual, POS checkout tips, payout settlements, ledger reversals upon voiding, RBAC `own` scope enforcement, and tenant isolation.
+7. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
+8. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
+9. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
+10. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+11. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+12. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+13. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+14. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+15. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+16. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 

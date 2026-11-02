@@ -50,6 +50,7 @@ export default function WorkerMobilePage() {
   const router = useRouter();
   const [session, setSession] = useState<UserSession | null>(null);
   const [data, setData] = useState<WorkerDashboardData | null>(null);
+  const [commission, setCommission] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +76,12 @@ export default function WorkerMobilePage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await apiRequest<WorkerDashboardData>('/reports/dashboard/worker');
+      const [res, commRes] = await Promise.all([
+        apiRequest<WorkerDashboardData>('/reports/dashboard/worker'),
+        apiRequest<any[]>('/commission/summary').catch(() => []),
+      ]);
       setData(res);
+      setCommission(commRes && commRes.length > 0 ? commRes[0] : null);
     } catch (err: any) {
       setError(err.message || 'Failed to load worker queue.');
     } finally {
@@ -214,6 +219,41 @@ export default function WorkerMobilePage() {
               <p className="text-base font-black text-amber-400 mt-1 truncate">
                 {formatINR(data.metrics.personalRevenuePaise)}
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Phase 3: My Commission & Tips Balance Card */}
+        {commission && (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                <DollarSign className="w-4 h-4 text-emerald-400" /> My Earnings & Commission
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                {commission.commissionRatePercent}% Service / {commission.productCommissionRatePercent}% Product
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center text-xs">
+              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] text-slate-400 block">Commissions</span>
+                <span className="font-bold text-white mt-0.5 block">
+                  {formatINR(commission.totalServiceCommissionPaise + commission.totalProductCommissionPaise)}
+                </span>
+              </div>
+              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
+                <span className="text-[10px] text-slate-400 block">Tips Earned</span>
+                <span className="font-bold text-amber-400 mt-0.5 block">
+                  {formatINR(commission.totalTipsPaise)}
+                </span>
+              </div>
+              <div className="bg-slate-950 p-2.5 rounded-xl border border-emerald-500/30">
+                <span className="text-[10px] text-slate-400 block">Payout Pending</span>
+                <span className="font-bold text-emerald-400 mt-0.5 block">
+                  {formatINR(commission.balancePendingPaise)}
+                </span>
+              </div>
             </div>
           </div>
         )}

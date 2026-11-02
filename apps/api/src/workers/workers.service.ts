@@ -23,6 +23,8 @@ const out = (r: any) => ({
   id: r.id, displayName: r.display_name, status: r.status, archived: !!r.archived_at, userId: r.user_id,
   serviceIds: r.service_ids ?? [], services: r.service_ids ?? [], hasAvailability: r.avail_days > 0,
   phone: r.phone ?? r.login_phone ?? null,
+  commissionRatePercent: Number(r.commission_rate_percent || 0),
+  productCommissionRatePercent: Number(r.product_commission_rate_percent || 0),
   login: r.user_id ? { phone: r.login_phone, email: r.login_email, status: r.login_status } : null,
   photoUrl: r.photo_file_id ? `/api/v1/shops/public/${r.slug}/barbers/${r.id}/photo` : null,
 });
@@ -66,7 +68,7 @@ export class WorkersService {
     });
   }
 
-  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; phone?: string; email?: string; serviceIds?: string[]; login?: any; linkUserId?: string }) {
+  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; phone?: string; email?: string; commissionRatePercent?: number; productCommissionRatePercent?: number; serviceIds?: string[]; login?: any; linkUserId?: string }) {
     let loginData = dto.login;
     if (!loginData && (dto.email || dto.phone)) {
       loginData = {
@@ -87,14 +89,34 @@ export class WorkersService {
         userId = u.id;
       }
       let id: string;
-      try { id = (await c.query('INSERT INTO workers (shop_id, user_id, display_name, phone) VALUES ($1,$2,$3,$4) RETURNING id', [ctx.shopId, userId, dto.displayName, dto.phone ?? null])).rows[0].id; }
+      try {
+        id = (
+          await c.query(
+            'INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+            [ctx.shopId, userId, dto.displayName, dto.phone ?? null, dto.commissionRatePercent ?? 0, dto.productCommissionRatePercent ?? 0]
+          )
+        ).rows[0].id;
+      }
       catch (e) { throw isUniqueViolation(e) ? conflict('That staff account is already linked to a worker profile.') : e; }
       if (dto.serviceIds?.length) {
         for (const sid of dto.serviceIds) {
           await c.query('INSERT INTO worker_services (shop_id, worker_id, service_id) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [ctx.shopId, id, sid]);
         }
       }
-      await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.create', entity: 'worker', entityId: id, newValues: { displayName: dto.displayName, userId }, ip: ctx.ip });
+      await this.audit.log(c, {
+        shopId: ctx.shopId,
+        userId: ctx.userId,
+        action: 'worker.create',
+        entity: 'worker',
+        entityId: id,
+        newValues: {
+          displayName: dto.displayName,
+          userId,
+          commissionRatePercent: dto.commissionRatePercent ?? 0,
+          productCommissionRatePercent: dto.productCommissionRatePercent ?? 0,
+        },
+        ip: ctx.ip,
+      });
       return this.fresh(c, id);
     });
   }
@@ -114,15 +136,32 @@ export class WorkersService {
     });
   }
 
-  update(ctx: AuthContext, p: Effective, id: string, dto: { displayName?: string; status?: string }) {
+  update(ctx: AuthContext, p: Effective, id: string, dto: { displayName?: string; status?: string; commissionRatePercent?: number; productCommissionRatePercent?: number }) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       const old = await this.loadFor(c, ctx, p, 'workers.update', id, true);
       if (old.archived_at) throw conflict('This worker is archived. Restore them first.');
       const before: Record<string, unknown> = {}, after: Record<string, unknown> = {};
       if (dto.displayName !== undefined && dto.displayName !== old.display_name) { before.displayName = old.display_name; after.displayName = dto.displayName; }
       if (dto.status !== undefined && dto.status !== old.status) { before.status = old.status; after.status = dto.status; }
+      if (dto.commissionRatePercent !== undefined && Number(dto.commissionRatePercent) !== Number(old.commission_rate_percent)) {
+        before.commissionRatePercent = old.commission_rate_percent;
+        after.commissionRatePercent = dto.commissionRatePercent;
+      }
+      if (dto.productCommissionRatePercent !== undefined && Number(dto.productCommissionRatePercent) !== Number(old.product_commission_rate_percent)) {
+        before.productCommissionRatePercent = old.product_commission_rate_percent;
+        after.productCommissionRatePercent = dto.productCommissionRatePercent;
+      }
       if (Object.keys(after).length) {
-        await c.query('UPDATE workers SET display_name = COALESCE($2, display_name), status = COALESCE($3, status), updated_at = now() WHERE id = $1', [id, dto.displayName ?? null, dto.status ?? null]);
+        await c.query(
+          `UPDATE workers
+           SET display_name = COALESCE($2, display_name),
+               status = COALESCE($3, status),
+               commission_rate_percent = COALESCE($4, commission_rate_percent),
+               product_commission_rate_percent = COALESCE($5, product_commission_rate_percent),
+               updated_at = now()
+           WHERE id = $1`,
+          [id, dto.displayName ?? null, dto.status ?? null, dto.commissionRatePercent ?? null, dto.productCommissionRatePercent ?? null]
+        );
         await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.update', entity: 'worker', entityId: id, oldValues: before, newValues: after, ip: ctx.ip });
       }
       return this.fresh(c, id);

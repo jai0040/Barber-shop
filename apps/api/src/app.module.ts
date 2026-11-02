@@ -21,6 +21,7 @@ import { FinanceModule } from './finance/finance.module';
 import { ReportsModule } from './reports/reports.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
 import { MembershipsModule } from './memberships/memberships.module';
+import { CommissionModule } from './commission/commission.module';
 import { AuditController } from './audit/audit.controller';
 
 @Module({
@@ -29,7 +30,7 @@ import { AuditController } from './audit/audit.controller';
     CoreModule, FilesModule, AuthModule, RbacModule, PlatformModule, ShopsModule,
     CatalogModule, WorkersModule, CustomersModule, AvailabilityModule,
     AppointmentsModule, ProductsModule, BillingModule, FinanceModule, ReportsModule,
-    LoyaltyModule, MembershipsModule,
+    LoyaltyModule, MembershipsModule, CommissionModule,
   ],
   controllers: [HealthController, AuditController],
   providers: [ // order matters: rate limit -> who are you -> CSRF -> are you allowed

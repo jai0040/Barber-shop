@@ -27,6 +27,7 @@ export interface WorkerItem {
   email?: string | null;
   isActive: boolean;
   commissionRatePercent: number;
+  productCommissionRatePercent?: number;
   services?: string[]; // array of service IDs
   createdAt: string;
   updatedAt: string;
@@ -163,6 +164,7 @@ export interface InvoiceItem {
   workerName?: string | null;
   subtotalPaise: number;
   discountPaise: number;
+  tipPaise?: number;
   finalTotalPaise: number;
   paymentStatus: 'pending' | 'paid' | 'void';
   items: InvoiceLineItem[];
@@ -301,4 +303,59 @@ export interface CustomerMembership {
     usedCount: number;
     remainingCount: number;
   }>;
+}
+
+// Phase 3: Staff Commission & Tip Payouts
+export type CommissionLedgerType =
+  | 'service_commission'
+  | 'product_commission'
+  | 'tip'
+  | 'manual_adjustment'
+  | 'payout'
+  | 'reversal';
+
+export interface WorkerCommissionEntry {
+  id: string;
+  shopId: string;
+  workerId: string;
+  workerName?: string;
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
+  type: CommissionLedgerType;
+  amountPaise: number;
+  commissionRatePercent?: number | null;
+  baseAmountPaise?: number | null;
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface WorkerPayout {
+  id: string;
+  shopId: string;
+  workerId: string;
+  workerName?: string;
+  amountPaise: number;
+  paymentMethod: 'cash' | 'bank_transfer' | 'upi';
+  periodStartDate?: string | null;
+  periodEndDate?: string | null;
+  notes?: string | null;
+  expenseId?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface WorkerEarningsSummary {
+  workerId: string;
+  workerName: string;
+  commissionRatePercent: number;
+  productCommissionRatePercent: number;
+  totalServiceCommissionPaise: number;
+  totalProductCommissionPaise: number;
+  totalTipsPaise: number;
+  totalBonusesPaise: number;
+  totalEarnedPaise: number;
+  totalPaidOutPaise: number;
+  balancePendingPaise: number;
+  recentEntries?: WorkerCommissionEntry[];
 }

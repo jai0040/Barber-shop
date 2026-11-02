@@ -20,6 +20,8 @@ interface WorkerItem {
   displayName: string;
   phone: string;
   email?: string | null;
+  commissionRatePercent?: number;
+  productCommissionRatePercent?: number;
   serviceIds: string[];
 }
 
@@ -43,6 +45,8 @@ export default function AdminWorkersPage() {
   // Add Worker Form
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [serviceComm, setServiceComm] = useState('40');
+  const [productComm, setProductComm] = useState('10');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -62,6 +66,8 @@ export default function AdminWorkersPage() {
           id: w.id,
           displayName: w.displayName ?? w.display_name,
           phone: w.phone,
+          commissionRatePercent: Number(w.commissionRatePercent ?? w.commission_rate_percent ?? 0),
+          productCommissionRatePercent: Number(w.productCommissionRatePercent ?? w.product_commission_rate_percent ?? 0),
           serviceIds: w.serviceIds || [],
         }))
       );
@@ -84,12 +90,16 @@ export default function AdminWorkersPage() {
         body: JSON.stringify({
           displayName: name.trim(),
           phone: phone.trim(),
+          commissionRatePercent: parseFloat(serviceComm) || 0,
+          productCommissionRatePercent: parseFloat(productComm) || 0,
         }),
       });
 
       setShowAddModal(false);
       setName('');
       setPhone('');
+      setServiceComm('40');
+      setProductComm('10');
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Failed to add worker');
@@ -158,6 +168,7 @@ export default function AdminWorkersPage() {
                 <tr>
                   <th className="px-5 py-3.5">Barber Name</th>
                   <th className="px-5 py-3.5">Mobile Phone</th>
+                  <th className="px-5 py-3.5">Commissions (%)</th>
                   <th className="px-5 py-3.5">Assigned Services</th>
                   <th className="px-5 py-3.5 text-right">Service Capabilities</th>
                 </tr>
@@ -174,6 +185,12 @@ export default function AdminWorkersPage() {
 
                     <td className="px-5 py-4 font-mono text-slate-300">
                       {w.phone}
+                    </td>
+
+                    <td className="px-5 py-4 font-mono text-[11px] text-emerald-400">
+                      <span>✂️ {w.commissionRatePercent || 0}%</span>
+                      <span className="text-slate-500 mx-1">/</span>
+                      <span className="text-amber-400">📦 {w.productCommissionRatePercent || 0}%</span>
                     </td>
 
                     <td className="px-5 py-4">
@@ -260,6 +277,37 @@ export default function AdminWorkersPage() {
                   required
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                    Service Comm. (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={serviceComm}
+                    onChange={(e) => setServiceComm(e.target.value)}
+                    placeholder="40"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                    Product Comm. (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={productComm}
+                    onChange={(e) => setProductComm(e.target.value)}
+                    placeholder="10"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
               </div>
 
               <div className="pt-2 flex justify-end gap-2">

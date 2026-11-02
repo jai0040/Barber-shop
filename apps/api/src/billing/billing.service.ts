@@ -19,6 +19,7 @@ export class BillingService {
       customerId?: string | null;
       workerId?: string | null;
       discountPaise?: number;
+      tipPaise?: number;
       redeemPoints?: number;
       customerMembershipId?: string | null;
       items: Array<{
@@ -87,7 +88,8 @@ export class BillingService {
         discount += pointsDiscountPaise;
       }
 
-      const finalTotal = Math.max(0, subtotal - discount);
+      const tipPaise = Number(dto.tipPaise || 0);
+      const finalTotal = Math.max(0, subtotal - discount) + tipPaise;
 
       // 2. Generate unique invoice number: INV-YEAR-NUMBER
       const seqVal = (await c.query(`SELECT nextval('invoice_number_seq') AS num`)).rows[0].num;
@@ -95,14 +97,15 @@ export class BillingService {
       const invoiceNumber = `INV-${year}-${String(seqVal).padStart(4, '0')}`;
 
       // 3. Create invoice record
+      const initialStatus = finalTotal === 0 ? 'paid' : 'pending';
       const invRes = await c.query(
         `INSERT INTO invoices (
            shop_id, invoice_number, appointment_id, customer_id, worker_id,
-           subtotal_paise, discount_paise, final_total_paise, payment_status
+           subtotal_paise, discount_paise, tip_paise, final_total_paise, payment_status
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
-        [ctx.shopId, invoiceNumber, dto.appointmentId ?? null, dto.customerId ?? null, dto.workerId ?? null, subtotal, discount, finalTotal]
+        [ctx.shopId, invoiceNumber, dto.appointmentId ?? null, dto.customerId ?? null, dto.workerId ?? null, subtotal, discount, tipPaise, finalTotal, initialStatus]
       );
       const invoiceId = invRes.rows[0].id;
 
@@ -285,6 +288,88 @@ export class BillingService {
             }
           }
         }
+
+        // Award Worker Commission & Tip if worker is assigned
+        if (inv.worker_id) {
+          const worker = (
+            await c.query(
+              `SELECT id, display_name, commission_rate_percent, product_commission_rate_percent FROM workers WHERE id = $1 AND shop_id = $2`,
+              [inv.worker_id, ctx.shopId]
+            )
+          ).rows[0];
+
+          if (worker) {
+            const items = (
+              await c.query(
+                `SELECT type, item_name, quantity, total_paise FROM invoice_items WHERE invoice_id = $1 AND shop_id = $2`,
+                [invoiceId, ctx.shopId]
+              )
+            ).rows;
+
+            // Service Commission
+            const sTotal = items
+              .filter((i: any) => i.type === 'service')
+              .reduce((acc: number, i: any) => acc + Number(i.total_paise), 0);
+            const sRate = Number(worker.commission_rate_percent || 0);
+            const sComm = sRate > 0 ? Math.floor(sTotal * (sRate / 100)) : 0;
+            if (sComm > 0) {
+              await c.query(
+                `INSERT INTO worker_commission_ledger (shop_id, worker_id, invoice_id, type, amount_paise, commission_rate_percent, base_amount_paise, notes, created_by)
+                 VALUES ($1, $2, $3, 'service_commission', $4, $5, $6, $7, $8)`,
+                [
+                  ctx.shopId,
+                  inv.worker_id,
+                  invoiceId,
+                  sComm,
+                  sRate,
+                  sTotal,
+                  `${sRate}% commission on service total Rs ${sTotal / 100} (Invoice ${inv.invoice_number})`,
+                  ctx.userId,
+                ]
+              );
+            }
+
+            // Product Commission
+            const pTotal = items
+              .filter((i: any) => i.type === 'product')
+              .reduce((acc: number, i: any) => acc + Number(i.total_paise), 0);
+            const pRate = Number(worker.product_commission_rate_percent || 0);
+            const pComm = pRate > 0 ? Math.floor(pTotal * (pRate / 100)) : 0;
+            if (pComm > 0) {
+              await c.query(
+                `INSERT INTO worker_commission_ledger (shop_id, worker_id, invoice_id, type, amount_paise, commission_rate_percent, base_amount_paise, notes, created_by)
+                 VALUES ($1, $2, $3, 'product_commission', $4, $5, $6, $7, $8)`,
+                [
+                  ctx.shopId,
+                  inv.worker_id,
+                  invoiceId,
+                  pComm,
+                  pRate,
+                  pTotal,
+                  `${pRate}% commission on product sales Rs ${pTotal / 100} (Invoice ${inv.invoice_number})`,
+                  ctx.userId,
+                ]
+              );
+            }
+
+            // Tip
+            const tipPaise = Number(inv.tip_paise || 0);
+            if (tipPaise > 0) {
+              await c.query(
+                `INSERT INTO worker_commission_ledger (shop_id, worker_id, invoice_id, type, amount_paise, notes, created_by)
+                 VALUES ($1, $2, $3, 'tip', $4, $5, $6)`,
+                [
+                  ctx.shopId,
+                  inv.worker_id,
+                  invoiceId,
+                  tipPaise,
+                  `Tip of Rs ${tipPaise / 100} from Invoice ${inv.invoice_number}`,
+                  ctx.userId,
+                ]
+              );
+            }
+          }
+        }
       }
 
       await this.audit.log(c, {
@@ -370,6 +455,25 @@ export class BillingService {
               [ctx.shopId, inv.customer_id, -delta, custRow.loyalty_points, invoiceId, `Revoked ${delta} points for voided invoice ${inv.invoice_number}`, ctx.userId]
             );
           }
+        }
+      }
+
+      // Revert any earned commissions and tips
+      const commTxs = (
+        await c.query(
+          `SELECT worker_id, amount_paise, type FROM worker_commission_ledger WHERE invoice_id = $1 AND shop_id = $2`,
+          [invoiceId, ctx.shopId]
+        )
+      ).rows;
+
+      for (const ct of commTxs) {
+        const amt = Number(ct.amount_paise);
+        if (amt > 0) {
+          await c.query(
+            `INSERT INTO worker_commission_ledger (shop_id, worker_id, invoice_id, type, amount_paise, notes, created_by)
+             VALUES ($1, $2, $3, 'reversal', $4, $5, $6)`,
+            [ctx.shopId, ct.worker_id, invoiceId, -amt, `Reversal of ${ct.type} for voided invoice ${inv.invoice_number}`, ctx.userId]
+          );
         }
       }
 
@@ -485,6 +589,7 @@ export class BillingService {
       workerName: row.worker_name ?? null,
       subtotalPaise: Number(row.subtotal_paise),
       discountPaise: Number(row.discount_paise),
+      tipPaise: Number(row.tip_paise || 0),
       finalTotalPaise: Number(row.final_total_paise),
       paymentStatus: row.payment_status,
       items: items.map((i: any) => ({

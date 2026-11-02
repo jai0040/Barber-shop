@@ -98,9 +98,9 @@ async function seed() {
 
     // 5. Workers: Rahul, Amit, Raj
     const demoWorkers = [
-      { name: 'Rahul', phone: '+919876500101', email: 'rahul@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard'] },
-      { name: 'Amit', phone: '+919876500102', email: 'amit@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard', 'Hair Spa'] },
-      { name: 'Raj', phone: '+919876500103', email: 'raj@classicbarber.com', services: ['Haircut', 'Hair Spa'] },
+      { name: 'Rahul', phone: '+919876500101', email: 'rahul@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard'], comm: 40, pComm: 10 },
+      { name: 'Amit', phone: '+919876500102', email: 'amit@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard', 'Hair Spa'], comm: 40, pComm: 10 },
+      { name: 'Raj', phone: '+919876500103', email: 'raj@classicbarber.com', services: ['Haircut', 'Hair Spa'], comm: 35, pComm: 10 },
     ];
 
     for (const w of demoWorkers) {
@@ -118,9 +118,14 @@ async function seed() {
       let workerRec = (await pool.query(`SELECT id FROM workers WHERE shop_id = $1 AND user_id = $2`, [shopId, workerUser.id])).rows[0];
       if (!workerRec) {
         workerRec = (await pool.query(
-          `INSERT INTO workers (shop_id, user_id, display_name, phone) VALUES ($1, $2, $3, $4) RETURNING id`,
-          [shopId, workerUser.id, w.name, w.phone]
+          `INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [shopId, workerUser.id, w.name, w.phone, w.comm, w.pComm]
         )).rows[0];
+      } else {
+        await pool.query(
+          `UPDATE workers SET commission_rate_percent = $1, product_commission_rate_percent = $2 WHERE id = $3`,
+          [w.comm, w.pComm, workerRec.id]
+        );
       }
       const wid = workerRec.id;
 
