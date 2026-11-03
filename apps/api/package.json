@@ -11,6 +11,8 @@
     "migrate": "node dist/db/migrate-cli.js",
     "seed-demo": "node dist/cli-seed-demo.js",
     "create-platform-admin": "node dist/cli-create-platform-admin.js",
+    "backup": "node dist/cli-backup.js backup",
+    "restore": "node dist/cli-backup.js restore",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --test-concurrency=1 \"dist/**/*.test.js\""
   },
