@@ -499,5 +499,43 @@ export interface ReviewSummary {
   };
 }
 
+// ==================== Phase 7: Notifications & Alerts ====================
+
+export type NotificationType =
+  | 'appointment_booked'
+  | 'appointment_confirmed'
+  | 'appointment_assigned'
+  | 'appointment_cancelled'
+  | 'appointment_completed'
+  | 'payment_received'
+  | 'low_stock'
+  | 'salary_advance_requested'
+  | 'review_received';
+
+export type NotificationChannel = 'in_app' | 'whatsapp' | 'sms' | 'email';
+export type NotificationStatus = 'unread' | 'read' | 'delivered' | 'failed';
+
+export interface NotificationItem {
+  id: string;
+  shopId: string;
+  userId: string | null;
+  customerId: string | null;
+  customerName?: string | null;
+  title: string;
+  message: string;
+  type: NotificationType;
+  channel: NotificationChannel;
+  status: NotificationStatus;
+  metadata?: Record<string, any> | null;
+  whatsappUrl?: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationCountSummary {
+  unreadCount: number;
+}
+
+
 
 

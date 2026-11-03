@@ -63,6 +63,8 @@ export const PERMISSIONS: PermissionDef[] = [
   d('salary.manage', 'Configure base salary, approve advances, and settle payroll'),
   d('reviews.view', 'View customer reviews and ratings', true),
   d('reviews.manage', 'Moderate and reply to customer reviews'),
+  d('notifications.view', 'View in-system notifications and alerts', true),
+  d('notifications.manage', 'Manage notification settings, dispatch, and templates'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -87,13 +89,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'commission.view', 'commission.manage', 'coupons.view', 'coupons.manage',
       'attendance.view', 'attendance.manage', 'salary.view', 'salary.manage',
       'reviews.view', 'reviews.manage',
+      'notifications.view', 'notifications.manage',
     ),
   },
   {
     systemKey: 'worker', name: 'Worker',
     permissions: {
       ...own('dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update',
-        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view', 'attendance.view', 'salary.view', 'reviews.view'),
+        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view', 'attendance.view', 'salary.view', 'reviews.view', 'notifications.view'),
       ...all('services.view', 'products.view'),
     },
   },
@@ -104,6 +107,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'customers.view', 'customers.create', 'customers.update', 'services.view', 'products.view',
       'billing.view', 'billing.create', 'payments.view', 'payments.record',
       'loyalty.view', 'memberships.view', 'commission.view', 'coupons.view',
+      'notifications.view',
     ),
   },
   {

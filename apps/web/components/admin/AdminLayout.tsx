@@ -27,6 +27,7 @@ import {
   UserCheck,
   Star,
 } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -107,12 +108,15 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
           </div>
         </div>
 
-        <Link
-          href="/worker"
-          className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold flex items-center gap-1"
-        >
-          <Smartphone className="w-3.5 h-3.5" /> Worker
-        </Link>
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <Link
+            href="/worker"
+            className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold flex items-center gap-1"
+          >
+            <Smartphone className="w-3.5 h-3.5" /> Worker
+          </Link>
+        </div>
       </div>
 
       {/* Sidebar Navigation */}
@@ -217,16 +221,17 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {(title || actions) && (
-          <header className="px-6 py-4 bg-slate-900/60 border-b border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                {title}
-              </h2>
-            </div>
-            {actions && <div className="flex items-center gap-3">{actions}</div>}
-          </header>
-        )}
+        <header className="px-6 py-4 bg-slate-900/60 border-b border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              {title}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            {actions}
+            <NotificationBell />
+          </div>
+        </header>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
           {children}

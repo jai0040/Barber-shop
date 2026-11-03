@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { ErrorCodes, InventoryTransactionItem, ProductCategory, ProductItem } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext } from '../common/types';
 import { Db, isUniqueViolation } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const notFound = (m = 'Product not found.') => new AppException(404, ErrorCodes.NOT_FOUND, m);
 const conflict = (m: string) => new AppException(409, ErrorCodes.CONFLICT, m);
@@ -12,7 +13,11 @@ const badRequest = (m: string) => new AppException(400, ErrorCodes.VALIDATION_FA
 
 @Injectable()
 export class ProductsService {
-  constructor(private db: Db, private audit: AuditService) {}
+  constructor(
+    private db: Db,
+    private audit: AuditService,
+    @Optional() private notifications?: NotificationsService
+  ) {}
 
   // ==================== CATEGORIES ====================
 
@@ -357,7 +362,22 @@ export class ProductsService {
         ip: ctx.ip,
       });
 
-      return this.loadProduct(c, ctx.shopId!, dto.productId);
+      const loaded = await this.loadProduct(c, ctx.shopId!, dto.productId);
+
+      if (this.notifications && loaded.isLowStock) {
+        try {
+          await this.notifications.notifyLowStock(ctx.shopId!, {
+            productId: loaded.id,
+            productName: loaded.name,
+            currentStock: loaded.stockQuantity,
+            threshold: loaded.lowStockThreshold,
+          });
+        } catch {
+          // alert failure shouldn't fail adjustment
+        }
+      }
+
+      return loaded;
     });
   }
 

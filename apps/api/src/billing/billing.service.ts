@@ -1,16 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ErrorCodes, InvoiceItem, InvoiceLineItem, Paginated } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext } from '../common/types';
 import { Db } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const notFound = (m = 'Invoice not found.') => new AppException(404, ErrorCodes.NOT_FOUND, m);
 const badRequest = (m: string) => new AppException(400, ErrorCodes.VALIDATION_FAILED, m);
 
 @Injectable()
 export class BillingService {
-  constructor(private db: Db, private audit: AuditService) {}
+  constructor(
+    private db: Db,
+    private audit: AuditService,
+    @Optional() private notifications?: NotificationsService
+  ) {}
 
   async createInvoice(
     ctx: AuthContext,
@@ -494,7 +499,28 @@ export class BillingService {
         ip: ctx.ip,
       });
 
-      return this.loadInvoice(c, ctx.shopId!, invoiceId);
+      const loaded = await this.loadInvoice(c, ctx.shopId!, invoiceId);
+
+      if (this.notifications && loaded.customerId && totalPaid >= Number(inv.final_total_paise)) {
+        try {
+          const custRow = (await c.query(`SELECT name, phone FROM customers WHERE id = $1`, [loaded.customerId])).rows[0];
+          if (custRow) {
+            await this.notifications.notifyPaymentReceived(ctx.shopId!, {
+              invoiceId: loaded.id,
+              invoiceNumber: loaded.invoiceNumber,
+              customerName: custRow.name,
+              customerPhone: custRow.phone,
+              customerId: loaded.customerId,
+              totalAmountPaise: loaded.finalTotalPaise,
+              paymentMethod: dto.method,
+            });
+          }
+        } catch {
+          // notification failure must not fail payment recording
+        }
+      }
+
+      return loaded;
     });
   }
 

@@ -543,6 +543,20 @@ async function seed() {
       }
     }
 
+    // Phase 7: Seed Notifications
+    const notifsCount = (await pool.query(`SELECT count(*)::int as n FROM notifications WHERE shop_id = $1`, [shopId])).rows[0].n;
+    if (notifsCount === 0) {
+      await pool.query(
+        `INSERT INTO notifications (shop_id, title, message, type, channel, status, whatsapp_url, created_at)
+         VALUES 
+         ($1, 'New Appointment #1', 'New booking #1 from Jayant Patel for today at 10:30 with Rahul (Haircut).', 'appointment_booked', 'in_app', 'unread', NULL, NOW() - INTERVAL '15 minutes'),
+         ($1, 'Low Stock Alert: Organic Tea Tree Shampoo', 'Product \"Organic Tea Tree Shampoo\" has only 3 units remaining (alert threshold: 5). Please reorder stock.', 'low_stock', 'in_app', 'unread', NULL, NOW() - INTERVAL '45 minutes'),
+         ($1, 'Payment Receipt #INV-1001', 'Classic Barber Shop: Receipt for invoice #INV-1001. Paid Rs 600.00 via UPI. Thank you for your business!', 'payment_received', 'whatsapp', 'unread', 'https://wa.me/919876543212?text=Classic%20Barber%20Shop%3A%20Receipt%20for%20invoice%20%23INV-1001.%20Paid%20Rs%20600.00%20via%20UPI.%20Thank%20you%20for%20your%20business!', NOW() - INTERVAL '2 hours'),
+         ($1, 'New 5★ Review', 'New 5-star review received from Suresh Raina for barber Raj: \"The Hair Spa by Raj was unbelievably relaxing!\"', 'review_received', 'in_app', 'read', NULL, NOW() - INTERVAL '3 hours')`,
+        [shopId]
+      );
+    }
+
     console.log('✅ Realistic demo data successfully seeded for Classic Barber Shop!');
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);

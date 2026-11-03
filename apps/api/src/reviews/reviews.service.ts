@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Db } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthContext, Effective } from '../common/types';
 import { AppException } from '../common/app-exception';
 import { ErrorCodes } from '@barbershop/shared';
 import { ReviewItem, ReviewStatus, ReviewSummary } from '@barbershop/shared';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const notFound = (m = 'Review or record not found.') =>
   new AppException(404, ErrorCodes.NOT_FOUND, m);
@@ -15,7 +16,11 @@ const conflict = (m: string) =>
 
 @Injectable()
 export class ReviewsService {
-  constructor(private db: Db, private audit: AuditService) {}
+  constructor(
+    private db: Db,
+    private audit: AuditService,
+    @Optional() private notifications?: NotificationsService
+  ) {}
 
   async createReview(
     ctx: AuthContext,
@@ -159,6 +164,24 @@ export class ReviewsService {
         },
         ip: ctx.ip,
       });
+
+      if (this.notifications) {
+        try {
+          const workerUserRow = row.worker_id
+            ? (await c.query(`SELECT user_id FROM workers WHERE id = $1`, [row.worker_id])).rows[0]
+            : null;
+          await this.notifications.notifyReviewReceived(shopId, {
+            reviewId: row.id,
+            customerName: cust.name,
+            rating: row.rating,
+            workerName: joined?.worker_name,
+            workerUserId: workerUserRow?.user_id,
+            comment: row.comment,
+          });
+        } catch {
+          // notification failure should not block review creation
+        }
+      }
 
       return {
         id: row.id,

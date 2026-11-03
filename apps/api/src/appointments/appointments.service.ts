@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AppointmentItem, AppointmentServiceItem, AppointmentStatus, ErrorCodes, Paginated } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext, Effective } from '../common/types';
 import { Db } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AvailabilityService } from '../availability/availability.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { normalizePhone } from '../auth/phone';
 import { loadConfig } from '../config';
 
@@ -29,7 +30,8 @@ export class AppointmentsService {
   constructor(
     private db: Db,
     private audit: AuditService,
-    private availability: AvailabilityService
+    private availability: AvailabilityService,
+    @Optional() private notifications?: NotificationsService
   ) {}
 
   // ==================== PUBLIC BOOKING ====================
@@ -148,7 +150,32 @@ export class AppointmentsService {
         [shop.id, appointmentId]
       );
 
-      return this.loadAppointment(c, shop.id, appointmentId);
+      const loaded = await this.loadAppointment(c, shop.id, appointmentId);
+
+      if (this.notifications) {
+        try {
+          const workerUserRow = assignedWorkerId
+            ? (await c.query(`SELECT user_id FROM workers WHERE id = $1`, [assignedWorkerId])).rows[0]
+            : null;
+          await this.notifications.notifyAppointmentBooked(shop.id, {
+            appointmentId: loaded.id,
+            appointmentNumber: loaded.appointmentNumber,
+            customerName: dto.name,
+            customerPhone: dto.phone,
+            customerId: customerId,
+            date: dto.date,
+            startTime: dto.startTime,
+            workerName: loaded.workerName ?? undefined,
+            workerUserId: workerUserRow?.user_id,
+            serviceNames: services.map((s) => s.name),
+            shopName: shop.name,
+          });
+        } catch {
+          // notification dispatch failure should not block core booking
+        }
+      }
+
+      return loaded;
     });
   }
 
@@ -397,7 +424,27 @@ export class AppointmentsService {
         ip: ctx.ip,
       });
 
-      return this.loadAppointment(c, ctx.shopId!, appointmentId);
+      const loaded = await this.loadAppointment(c, ctx.shopId!, appointmentId);
+
+      if (this.notifications) {
+        try {
+          await this.notifications.notifyAppointmentStatus(ctx.shopId!, {
+            appointmentId: loaded.id,
+            appointmentNumber: loaded.appointmentNumber,
+            customerName: loaded.customerName,
+            customerPhone: loaded.customerPhone,
+            customerId: loaded.customerId,
+            status,
+            date: loaded.date,
+            startTime: loaded.startTime ?? '',
+            workerName: loaded.workerName ?? undefined,
+          });
+        } catch {
+          // notification dispatch failure should not block core status change
+        }
+      }
+
+      return loaded;
     });
   }
 

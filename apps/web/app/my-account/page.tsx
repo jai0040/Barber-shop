@@ -588,7 +588,7 @@ export default function MyAccountPage() {
                         )}
                       </div>
 
-                      <div className="shrink-0 flex items-center">
+                      <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap">
                         {isCompleted && !appt.review && (
                           <button
                             type="button"
@@ -603,6 +603,18 @@ export default function MyAccountPage() {
                             <Star className="w-3.5 h-3.5 fill-current" /> Rate & Review
                           </button>
                         )}
+                        <a
+                          href={`https://wa.me/?text=${encodeURIComponent(
+                            `Classic Barber Shop Appointment #${appt.appointmentNumber} on ${appt.date} at ${appt.startTime || ''} for ${appt.services.map((s) => s.name).join(', ')} (Total: Rs ${appt.totalAmountPaise / 100}).`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-semibold flex items-center justify-center gap-1 transition-all"
+                          title="Share or Save Details on WhatsApp"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline text-[11px]">WhatsApp</span>
+                        </a>
                       </div>
                     </div>
                   );
