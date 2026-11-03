@@ -71,6 +71,29 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Ready-to-send click-to-chat WhatsApp deep links (`https://wa.me/...`) for digital receipts and appointment confirmations.
   - Customer portal alerts and 1-click WhatsApp share buttons on appointment records (`/my-account`).
 
+- **Online Payment Gateway & Razorpay Integration (Phase 8)**:
+  - Server-side Razorpay order generation (`POST /payments/razorpay/create-order`) linked to unpaid shop invoices.
+  - Cryptographic HMAC-SHA256 signature verification (`POST /payments/razorpay/verify`) with atomic invoice status update and receipt dispatch.
+  - Webhook callback listener (`POST /payments/razorpay/webhook`) for asynchronous payment capture notifications.
+  - Shop-level Razorpay key and secret credentials management (`PATCH /payments/credentials`).
+  - Integrated 3-way checkout selector on the POS terminal (`/admin/billing`): Cash (with change calculator), UPI QR, and Online Payment Gateway.
+
+- **CSV Data Export Engine (Sections 36 & 67)**:
+  - 1-click client-side CSV report export across all administrative data tables.
+  - UTF-8 BOM encoding ensures proper spreadsheet formatting across Excel, Google Sheets, and LibreOffice without mojibake.
+  - Export capabilities on Reports & Analytics (`/admin/reports`): Sales & Category Breakdown, Stylist Productivity, Inventory Asset Valuation, and Finance summaries.
+  - Export capabilities on Finance & Payroll (`/admin/finance`): Operational Expense Ledger and Staff Commission / Payout Ledgers.
+  - Export capabilities on Customer Profiles (`/admin/customers`): Complete customer directory, visit history, and notes.
+
+- **Multi-Location & Branch Switcher (Section 85)**:
+  - Multi-branch extensible architecture enabling unified owner management across multiple shop locations.
+  - Interactive Branch Location switcher dropdown in `AdminLayout` header and sidebar.
+  - Instant location context switching between flagship and branch stores (e.g., Indiranagar Flagship vs. Koramangala Branch).
+
+- **Automated Backup & Recovery Engine (Section 72)**:
+  - Production CLI utility (`npm run backup`) backing up all 41 tenant and system PostgreSQL tables into timestamped JSON snapshots.
+  - Atomic database restoration utility (`npm run restore <file>`) with transaction rollback protection.
+
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
   - Worker-service capability matrix (barbers only assigned to services they can perform).
@@ -198,7 +221,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### Test Coverage (100% Passing — 300 / 300 Tests across 20 Suites)
+### Test Coverage (100% Passing — 308 / 308 Tests across 21 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `attendance-salary.test.ts` — Shift clock-in/out, historical overrides, base salary configuration, advance approvals, pro-rated payroll calculation, automatic expense logging, and cross-shop isolation.
@@ -211,14 +234,15 @@ npm test
 10. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
 11. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
 12. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.
-13. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-14. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-15. `reviews-ratings.test.ts` — Customer 1–5 star reviews, duplicate prevention, public ratings summary, barber feedback, owner replies, moderation, and tenant isolation.
-16. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-17. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-18. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-19. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-20. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+13. `payment-gateway.test.ts` — Razorpay online orders, HMAC-SHA256 signature verification, webhook handling, shop credentials update, and cross-shop payment isolation.
+14. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+15. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+16. `reviews-ratings.test.ts` — Customer 1–5 star reviews, duplicate prevention, public ratings summary, barber feedback, owner replies, moderation, and tenant isolation.
+17. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+18. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+19. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+20. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+21. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 
