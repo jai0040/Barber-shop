@@ -11,7 +11,8 @@ let shopB: { id: string; slug: string };
 let workerIdA: string;
 let workerUserA: { id: string };
 
-before(async () => {
+describe('Staff Attendance & Salary Advance Engine (Phase 5)', () => {
+  before(async () => {
   try {
     h = await boot();
 
@@ -113,13 +114,8 @@ before(async () => {
   }
 });
 
-after(async () => {
-  if (h) await h.close();
-});
-
-describe('Staff Attendance & Salary Advance Engine (Phase 5)', () => {
-  let advanceId: string;
-  let settlementId: string;
+let advanceId: string;
+let settlementId: string;
 
   it('1. Configures worker base salary successfully', async () => {
     const res = await h.call('PUT', `/attendance/worker/${workerIdA}/salary`, {
@@ -316,5 +312,9 @@ describe('Staff Attendance & Salary Advance Engine (Phase 5)', () => {
       token: ownerTokenB,
     });
     assert.equal(res3.status, 404);
+  });
+
+  after(async () => {
+    if (h) await h.close();
   });
 });

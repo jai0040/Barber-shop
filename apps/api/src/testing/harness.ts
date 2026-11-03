@@ -59,12 +59,29 @@ export async function boot(port?: number, env: Record<string, string> = {}, extr
     base, ownerPool, appPool, appUrl, ownerUrl, uploadDir,
     async close() {
       const srv = app.getHttpServer() as any;
+      try { srv?.close?.(); } catch {}
       try { srv?.closeAllConnections?.(); } catch {}
       try { srv?.closeIdleConnections?.(); } catch {}
-      await app.close();
-      await ownerPool.end();
-      await appPool.end();
-      await pg.stop();
+      try {
+        const { Db } = await import('../db/db.service');
+        const db = app.get(Db, { strict: false });
+        await db?.pool?.end().catch(() => undefined);
+      } catch {}
+      await app.close().catch(() => undefined);
+      await ownerPool.end().catch(() => undefined);
+      await appPool.end().catch(() => undefined);
+      try {
+        const proc = (pg as any)?.process;
+        if (proc) {
+          proc.stdin?.destroy?.();
+          proc.stdout?.destroy?.();
+          proc.stderr?.destroy?.();
+          proc.unref?.();
+          try { process.kill(proc.pid, 'SIGKILL'); } catch {}
+          try { proc.kill('SIGKILL'); } catch {}
+        }
+      } catch {}
+      await Promise.race([pg.stop().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 300))]);
     },
     async upload(p, token, file, o = {}) {
       const fd = new FormData();

@@ -14,7 +14,8 @@ let customerUserIdA: string;
 let completedAptId: string;
 let bookedAptId: string;
 
-before(async () => {
+describe('Customer Reviews & Ratings Engine (Phase 6)', () => {
+  before(async () => {
   try {
     h = await boot();
 
@@ -137,12 +138,7 @@ before(async () => {
   }
 });
 
-after(async () => {
-  if (h) await h.close();
-});
-
-describe('Customer Reviews & Ratings Engine (Phase 6)', () => {
-  let reviewId1: string;
+let reviewId1: string;
 
   it('1. Customer submits a 5-star review for a completed appointment', async () => {
     const res = await h.call('POST', '/reviews', {
@@ -295,5 +291,9 @@ describe('Customer Reviews & Ratings Engine (Phase 6)', () => {
     });
     assert.equal(res3.status, 200);
     assert.equal(res3.body.data.total, 0);
+  });
+
+  after(async () => {
+    if (h) await h.close();
   });
 });

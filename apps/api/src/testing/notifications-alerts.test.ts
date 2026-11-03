@@ -14,7 +14,8 @@ let customerUserIdA: string;
 let serviceIdA: string;
 let productIdA: string;
 
-before(async () => {
+describe('Phase 7: Notification & Alerting Engine', () => {
+  before(async () => {
   try {
     h = await boot();
 
@@ -142,12 +143,7 @@ before(async () => {
   }
 });
 
-after(async () => {
-  if (h) await h.close();
-});
-
-describe('Phase 7: Notification & Alerting Engine', () => {
-  let createdNotifId: string;
+let createdNotifId: string;
 
   it('1. Staff lists empty or initial notifications and checks unread count', async () => {
     const resCount = await h.call('GET', '/notifications/unread-count', {
@@ -340,5 +336,9 @@ describe('Phase 7: Notification & Alerting Engine', () => {
     });
     assert.strictEqual(resB.status, 200);
     assert.strictEqual(resB.body.data.items.length, 0); // Completely isolated
+  });
+
+  after(async () => {
+    if (h) await h.close();
   });
 });

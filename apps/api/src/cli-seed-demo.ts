@@ -39,6 +39,25 @@ async function seed() {
       );
     }
 
+    // 1b. Multi-Branch Support: Seed Second Branch "Classic Barber (Koramangala Branch)"
+    let branch2 = (await pool.query(`SELECT id, slug FROM shops WHERE slug = 'classic-barber-koramangala'`)).rows[0];
+    if (!branch2) {
+      branch2 = (await pool.query(
+        `INSERT INTO shops (name, slug, phone, email, address, city, state, country, timezone, status)
+         VALUES ('Classic Barber (Koramangala)', 'classic-barber-koramangala', '+919876543299', 'koramangala@classicbarber.com',
+                 '80 Feet Road, 4th Block, Koramangala', 'Bengaluru', 'Karnataka', 'India', 'Asia/Kolkata', 'active')
+         RETURNING id, slug`
+      )).rows[0];
+      for (let day = 1; day <= 7; day++) {
+        const closeTime = day === 7 ? '18:00' : '21:00';
+        await pool.query(
+          `INSERT INTO shop_hours (shop_id, weekday, is_closed, open_time, close_time)
+           VALUES ($1, $2, false, '10:00'::time, $3::time) ON CONFLICT DO NOTHING`,
+          [branch2.id, day, closeTime]
+        );
+      }
+    }
+
     // 2. Roles
     const roles = (await pool.query(`SELECT id, system_key FROM roles WHERE shop_id = $1`, [shopId])).rows;
     let ownerRoleId = roles.find((r) => r.system_key === 'owner')?.id;

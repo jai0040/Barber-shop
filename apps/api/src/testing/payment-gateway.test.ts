@@ -10,7 +10,8 @@ let shopA: { id: string; slug: string };
 let shopB: { id: string; slug: string };
 let invoiceIdA: string;
 
-before(async () => {
+describe('Phase 8: Online Payment Gateway & Razorpay Integration', () => {
+  before(async () => {
   try {
     h = await boot();
 
@@ -85,13 +86,8 @@ before(async () => {
   }
 });
 
-after(async () => {
-  if (h) await h.close();
-});
-
-describe('Phase 8: Online Payment Gateway & Razorpay Integration', () => {
-  let orderId: string;
-  const devSecret = 'dev_razorpay_secret_key_12345';
+let orderId: string;
+const devSecret = 'dev_razorpay_secret_key_12345';
 
   it('1. Creates a Razorpay order linked to an unpaid invoice', async () => {
     const res = await h.call('POST', '/payments/razorpay/create-order', {
@@ -208,5 +204,9 @@ describe('Phase 8: Online Payment Gateway & Razorpay Integration', () => {
       },
     });
     assert.strictEqual(res.status, 404); // Invisible to Shop B
+  });
+
+  after(async () => {
+    if (h) await h.close();
   });
 });

@@ -85,7 +85,7 @@ before(async () => {
     const today = new Date().toISOString().slice(0, 10);
     const walkIn = await h.call('POST', '/appointments/walk-in', {
       token: ownerTokenA,
-      body: { customerName: 'Kunal', customerPhone: '+919876540001', workerId: rahulId, serviceIds: [haircutId] },
+      body: { customerName: 'Kunal', customerPhone: '+919876540001', workerId: rahulId, serviceIds: [haircutId], date: today, startTime: '10:00' },
     });
     const aptId = walkIn.body.data.id;
 

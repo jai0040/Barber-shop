@@ -28,6 +28,7 @@ import {
   Star,
 } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+import BranchSwitcher from './BranchSwitcher';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -127,15 +128,15 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
       >
         <div>
           {/* Logo & Shop Details */}
-          <div className="p-5 border-b border-slate-800/80">
+          <div className="p-4 border-b border-slate-800/80 space-y-3">
             <Link href="/admin/dashboard" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 p-0.5 shadow-md">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 p-0.5 shadow-md shrink-0">
                 <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
                   <Scissors className="w-5 h-5 text-amber-400" />
                 </div>
               </div>
-              <div>
-                <h1 className="font-black text-sm tracking-tight text-white leading-tight">
+              <div className="truncate">
+                <h1 className="font-black text-sm tracking-tight text-white leading-tight truncate">
                   {session.shop?.name || 'Classic Barber'}
                 </h1>
                 <div className="text-[10px] text-amber-400 font-semibold tracking-wider uppercase mt-0.5">
@@ -143,6 +144,7 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
                 </div>
               </div>
             </Link>
+            <BranchSwitcher currentShop={session.shop ?? null} />
           </div>
 
           {/* Nav List */}

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest, formatINR } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import AdminLayout from '@/components/admin/AdminLayout';
 import {
   BarChart3,
@@ -13,6 +14,7 @@ import {
   RefreshCw,
   Scissors,
   CheckCircle2,
+  Download,
 } from 'lucide-react';
 
 export default function AdminReportsPage() {
@@ -38,11 +40,61 @@ export default function AdminReportsPage() {
     }
   }
 
+  function handleExportCsv() {
+    if (!data) return;
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    if (reportType === 'sales') {
+      const headers = ['Category', 'Revenue (INR)'];
+      const rows = (data.breakdown || []).map((b: any) => [
+        b.itemType || b.type,
+        ((b.revenuePaise || b.totalPaise || 0) / 100).toFixed(2),
+      ]);
+      rows.unshift(['Total Revenue', ((data.totalRevenuePaise || 0) / 100).toFixed(2)]);
+      rows.unshift(['Invoices Count', data.invoicesCount || 0]);
+      downloadCsv(`sales_report_${dateStr}`, headers, rows);
+    } else if (reportType === 'workers') {
+      const headers = ['Barber Name', 'Clients Served', 'Revenue Generated (INR)'];
+      const rows = (data.workers || []).map((w: any) => [
+        w.workerName || w.displayName || 'Staff Member',
+        w.appointmentsCount || w.clientsCount || 0,
+        ((w.revenuePaise || 0) / 100).toFixed(2),
+      ]);
+      downloadCsv(`worker_productivity_report_${dateStr}`, headers, rows);
+    } else if (reportType === 'inventory') {
+      const headers = ['Product Name', 'Units in Stock', 'Unit Cost (INR)', 'Total Valuation (INR)'];
+      const rows = (data.items || []).map((it: any) => [
+        it.name,
+        it.stockQuantity,
+        ((it.costPricePaise || 0) / 100).toFixed(2),
+        (((it.stockQuantity || 0) * (it.costPricePaise || 0)) / 100).toFixed(2),
+      ]);
+      downloadCsv(`inventory_valuation_report_${dateStr}`, headers, rows);
+    } else if (reportType === 'finance') {
+      const headers = ['Metric', 'Amount (INR)'];
+      const rows = [
+        ['Total Revenue', ((data.summary?.revenuePaise || 0) / 100).toFixed(2)],
+        ['Total Expenses', ((data.summary?.expensesPaise || 0) / 100).toFixed(2)],
+        ['Net Result', ((data.summary?.netPaise || 0) / 100).toFixed(2)],
+      ];
+      downloadCsv(`finance_summary_report_${dateStr}`, headers, rows);
+    }
+  }
+
   return (
     <AdminLayout
       title="Business Reports & Analytics"
       actions={
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={loading || !data}
+            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Export Report as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            Export CSV
+          </button>
           <button
             onClick={loadReport}
             disabled={loading}

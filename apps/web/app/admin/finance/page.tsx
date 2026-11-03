@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest, formatINR } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import AdminLayout from '@/components/admin/AdminLayout';
 import {
   TrendingUp,
@@ -24,6 +25,7 @@ import {
   Clock,
   ShieldCheck,
   Check,
+  Download,
 } from 'lucide-react';
 import { WorkerEarningsSummary } from '@barbershop/shared';
 
@@ -250,6 +252,44 @@ export default function AdminFinancePage() {
     setShowPayoutModal(true);
   }
 
+  function handleExportCsv() {
+    const dateStr = new Date().toISOString().split('T')[0];
+    if (activeTab === 'expenses') {
+      const headers = ['Date', 'Category', 'Amount (INR)', 'Payment Mode', 'Vendor', 'Description'];
+      const rows = expenses.map((e) => [
+        e.expenseDate,
+        e.categoryName,
+        (e.amountPaise / 100).toFixed(2),
+        e.paymentMode,
+        e.vendorName || '-',
+        e.description || '-',
+      ]);
+      downloadCsv(`expenses_ledger_${dateStr}`, headers, rows);
+    } else {
+      const headers = [
+        'Barber Name',
+        'Service Comm %',
+        'Service Comm (INR)',
+        'Product Comm (INR)',
+        'Tips (INR)',
+        'Total Earned (INR)',
+        'Total Paid (INR)',
+        'Balance Pending (INR)',
+      ];
+      const rows = commissions.map((c) => [
+        c.workerName,
+        c.commissionRatePercent + '%',
+        (c.totalServiceCommissionPaise / 100).toFixed(2),
+        (c.totalProductCommissionPaise / 100).toFixed(2),
+        (c.totalTipsPaise / 100).toFixed(2),
+        (c.totalEarnedPaise / 100).toFixed(2),
+        (c.totalPaidOutPaise / 100).toFixed(2),
+        (c.balancePendingPaise / 100).toFixed(2),
+      ]);
+      downloadCsv(`staff_commissions_${dateStr}`, headers, rows);
+    }
+  }
+
   const totalCommissionsEarned = commissions.reduce(
     (acc, c) => acc + c.totalServiceCommissionPaise + c.totalProductCommissionPaise,
     0
@@ -288,6 +328,16 @@ export default function AdminFinancePage() {
               Staff Commissions & Payouts
             </button>
           </div>
+
+          <button
+            onClick={handleExportCsv}
+            disabled={activeTab === 'expenses' ? expenses.length === 0 : commissions.length === 0}
+            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Export Ledger as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            Export CSV
+          </button>
 
           <button
             onClick={() => {

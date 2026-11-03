@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest, formatINR } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import AdminLayout from '@/components/admin/AdminLayout';
 import {
   Users,
@@ -15,6 +16,7 @@ import {
   X,
   RefreshCw,
   FileText,
+  Download,
 } from 'lucide-react';
 
 interface CustomerItem {
@@ -100,11 +102,45 @@ export default function AdminCustomersPage() {
     }
   }
 
+  function handleExportCsv() {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Customer Name',
+      'Phone',
+      'Email',
+      'Preferred Barber',
+      'Account Linked',
+      'Registration Date',
+      'Customer Notes',
+      'Internal Notes',
+    ];
+    const rows = customers.map((c) => [
+      c.name,
+      c.phone,
+      c.email || '-',
+      c.preferredWorkerName || '-',
+      c.hasAccount ? 'Yes' : 'No',
+      c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '-',
+      c.notes || '-',
+      c.internalNotes || '-',
+    ]);
+    downloadCsv(`customers_directory_${dateStr}`, headers, rows);
+  }
+
   return (
     <AdminLayout
       title="Customer Directory & Profiles"
       actions={
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={customers.length === 0}
+            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Export Customers as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            Export CSV
+          </button>
           <button
             onClick={loadCustomers}
             disabled={loading}

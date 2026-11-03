@@ -19,8 +19,9 @@ const timeToMin = (t: string): number => {
 };
 
 const minToTime = (min: number): string => {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+  const safeMin = Math.min(Math.max(0, min), 1439); // 23:59 max time
+  const h = Math.floor(safeMin / 60);
+  const m = safeMin % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
 
