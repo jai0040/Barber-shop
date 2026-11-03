@@ -179,12 +179,26 @@ export interface InvoiceItem {
 export interface PaymentItem {
   id: string;
   invoiceId: string;
-  method: 'cash' | 'upi_qr';
+  method: 'cash' | 'upi_qr' | 'razorpay' | 'card' | 'online_gateway';
   amountPaise: number;
   status: 'completed' | 'failed';
   transactionReference: string | null;
   recordedByName?: string | null;
   createdAt: string;
+}
+
+export interface RazorpayOrderResponse {
+  orderId: string;
+  amountPaise: number;
+  currency: string;
+  keyId: string;
+}
+
+export interface RazorpayVerifyDto {
+  invoiceId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
 }
 
 export interface ExpenseCategory {

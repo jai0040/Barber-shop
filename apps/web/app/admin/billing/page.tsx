@@ -93,7 +93,7 @@ export default function AdminBillingPage() {
   const [couponError, setCouponError] = useState<string | null>(null);
 
   // Payment State
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi_qr'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi_qr' | 'razorpay'>('cash');
   const [cashTendered, setCashTendered] = useState<number>(0);
   const [upiRef, setUpiRef] = useState<string>('');
 
@@ -1085,31 +1085,56 @@ export default function AdminBillingPage() {
                 <label className="block text-xs font-semibold uppercase text-slate-400 mb-2">
                   Payment Method
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('cash')}
-                    className={`py-3 px-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                    className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
                       paymentMethod === 'cash'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300'
                         : 'bg-slate-950 border-slate-800 text-slate-400'
                     }`}
                   >
-                    <DollarSign className="w-5 h-5" /> Cash Payment
+                    <DollarSign className="w-5 h-5" /> Cash
                   </button>
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('upi_qr')}
-                    className={`py-3 px-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                    className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
                       paymentMethod === 'upi_qr'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300'
                         : 'bg-slate-950 border-slate-800 text-slate-400'
                     }`}
                   >
-                    <QrCode className="w-5 h-5" /> UPI QR Code
+                    <QrCode className="w-5 h-5" /> UPI QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('razorpay')}
+                    className={`py-3 px-2 rounded-2xl border text-xs font-bold flex flex-col items-center gap-1.5 transition-all ${
+                      paymentMethod === 'razorpay'
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-slate-950 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    <CreditCard className="w-5 h-5" /> Razorpay
                   </button>
                 </div>
               </div>
+
+              {/* Razorpay Gateway Option */}
+              {paymentMethod === 'razorpay' && (
+                <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-center space-y-2 text-xs">
+                  <CreditCard className="w-8 h-8 text-amber-400 mx-auto mb-1" />
+                  <p className="font-bold text-white">Online Payment Gateway (Razorpay)</p>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Accept Cards, NetBanking, Wallets & UPI directly with automated receipt generation.
+                  </p>
+                  <div className="mt-2 text-xs font-mono text-emerald-400 font-bold">
+                    Amount Due: {formatINR(totalPaise)}
+                  </div>
+                </div>
+              )}
 
               {/* Cash Calculation */}
               {paymentMethod === 'cash' && (

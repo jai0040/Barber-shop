@@ -21,9 +21,12 @@ export const createInvoiceSchema = z.object({
 });
 
 export const recordPaymentSchema = z.object({
-  method: z.enum(['cash', 'upi_qr']),
+  method: z.enum(['cash', 'upi_qr', 'razorpay', 'card', 'online_gateway']),
   amountPaise: z.number().int().min(1, 'Payment amount must be greater than 0'),
   transactionReference: z.string().trim().max(100).optional().nullable(),
+  gatewayOrderId: z.string().optional().nullable(),
+  gatewayPaymentId: z.string().optional().nullable(),
+  gatewaySignature: z.string().optional().nullable(),
 });
 
 export const invoiceQuerySchema = z.object({

@@ -326,7 +326,14 @@ export class BillingService {
   async recordPayment(
     ctx: AuthContext,
     invoiceId: string,
-    dto: { method: 'cash' | 'upi_qr'; amountPaise: number; transactionReference?: string | null }
+    dto: {
+      method: 'cash' | 'upi_qr' | 'razorpay' | 'card' | 'online_gateway';
+      amountPaise: number;
+      transactionReference?: string | null;
+      gatewayOrderId?: string | null;
+      gatewayPaymentId?: string | null;
+      gatewaySignature?: string | null;
+    }
   ): Promise<InvoiceItem> {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       const inv = (await c.query(`SELECT * FROM invoices WHERE id = $1 AND shop_id = $2 FOR UPDATE`, [invoiceId, ctx.shopId])).rows[0];
@@ -337,9 +344,22 @@ export class BillingService {
       }
 
       await c.query(
-        `INSERT INTO payments (shop_id, invoice_id, method, amount_paise, status, transaction_reference, recorded_by)
-         VALUES ($1, $2, $3, $4, 'completed', $5, $6)`,
-        [ctx.shopId, invoiceId, dto.method, dto.amountPaise, dto.transactionReference ?? null, ctx.userId]
+        `INSERT INTO payments (
+           shop_id, invoice_id, method, amount_paise, status, transaction_reference,
+           gateway_order_id, gateway_payment_id, gateway_signature, recorded_by
+         )
+         VALUES ($1, $2, $3, $4, 'completed', $5, $6, $7, $8, $9)`,
+        [
+          ctx.shopId,
+          invoiceId,
+          dto.method,
+          dto.amountPaise,
+          dto.transactionReference ?? null,
+          dto.gatewayOrderId ?? null,
+          dto.gatewayPaymentId ?? null,
+          dto.gatewaySignature ?? null,
+          ctx.userId,
+        ]
       );
 
       // Check total paid
