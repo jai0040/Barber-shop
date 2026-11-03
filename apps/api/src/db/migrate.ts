@@ -7,7 +7,7 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../migrations');
 /** Tables the application role may only INSERT/SELECT (append-only ledgers). */
 const APPEND_ONLY = ['audit_logs', 'appointment_status_history', 'customer_loyalty_ledger', 'customer_membership_service_usages', 'worker_commission_ledger', 'worker_payouts', 'coupon_redemptions'];
 /** Records that are cancelled/archived but never physically deleted by the application (history & money trail). */
-const NO_DELETE = ['appointments', 'appointment_services', 'customer_memberships'];
+const NO_DELETE = ['appointments', 'appointment_services', 'customer_memberships', 'worker_salary_settlements'];
 
 export async function migrate(ownerUrl: string, appUrl: string, log: (m: string) => void = console.log) {
   const c = new Client({ connectionString: ownerUrl });

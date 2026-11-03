@@ -47,6 +47,7 @@ export default function AdminWorkersPage() {
   const [phone, setPhone] = useState('');
   const [serviceComm, setServiceComm] = useState('40');
   const [productComm, setProductComm] = useState('10');
+  const [baseSalaryRupees, setBaseSalaryRupees] = useState('25000');
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -92,6 +93,7 @@ export default function AdminWorkersPage() {
           phone: phone.trim(),
           commissionRatePercent: parseFloat(serviceComm) || 0,
           productCommissionRatePercent: parseFloat(productComm) || 0,
+          baseSalaryPaise: Math.round((parseFloat(baseSalaryRupees) || 0) * 100),
         }),
       });
 
@@ -100,6 +102,7 @@ export default function AdminWorkersPage() {
       setPhone('');
       setServiceComm('40');
       setProductComm('10');
+      setBaseSalaryRupees('25000');
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Failed to add worker');
@@ -308,6 +311,21 @@ export default function AdminWorkersPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                  Monthly Base Salary (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={baseSalaryRupees}
+                  onChange={(e) => setBaseSalaryRupees(e.target.value)}
+                  placeholder="25000"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
               </div>
 
               <div className="pt-2 flex justify-end gap-2">

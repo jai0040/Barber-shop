@@ -25,6 +25,7 @@ const out = (r: any) => ({
   phone: r.phone ?? r.login_phone ?? null,
   commissionRatePercent: Number(r.commission_rate_percent || 0),
   productCommissionRatePercent: Number(r.product_commission_rate_percent || 0),
+  baseSalaryPaise: Number(r.base_salary_paise || 0),
   login: r.user_id ? { phone: r.login_phone, email: r.login_email, status: r.login_status } : null,
   photoUrl: r.photo_file_id ? `/api/v1/shops/public/${r.slug}/barbers/${r.id}/photo` : null,
 });
@@ -68,7 +69,7 @@ export class WorkersService {
     });
   }
 
-  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; phone?: string; email?: string; commissionRatePercent?: number; productCommissionRatePercent?: number; serviceIds?: string[]; login?: any; linkUserId?: string }) {
+  async create(ctx: AuthContext, actor: Effective, dto: { displayName: string; phone?: string; email?: string; commissionRatePercent?: number; productCommissionRatePercent?: number; baseSalaryPaise?: number; serviceIds?: string[]; login?: any; linkUserId?: string }) {
     let loginData = dto.login;
     if (!loginData && (dto.email || dto.phone)) {
       loginData = {
@@ -92,8 +93,8 @@ export class WorkersService {
       try {
         id = (
           await c.query(
-            'INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-            [ctx.shopId, userId, dto.displayName, dto.phone ?? null, dto.commissionRatePercent ?? 0, dto.productCommissionRatePercent ?? 0]
+            'INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent, base_salary_paise) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+            [ctx.shopId, userId, dto.displayName, dto.phone ?? null, dto.commissionRatePercent ?? 0, dto.productCommissionRatePercent ?? 0, dto.baseSalaryPaise ?? 0]
           )
         ).rows[0].id;
       }
@@ -114,6 +115,7 @@ export class WorkersService {
           userId,
           commissionRatePercent: dto.commissionRatePercent ?? 0,
           productCommissionRatePercent: dto.productCommissionRatePercent ?? 0,
+          baseSalaryPaise: dto.baseSalaryPaise ?? 0,
         },
         ip: ctx.ip,
       });
@@ -136,7 +138,7 @@ export class WorkersService {
     });
   }
 
-  update(ctx: AuthContext, p: Effective, id: string, dto: { displayName?: string; status?: string; commissionRatePercent?: number; productCommissionRatePercent?: number }) {
+  update(ctx: AuthContext, p: Effective, id: string, dto: { displayName?: string; status?: string; commissionRatePercent?: number; productCommissionRatePercent?: number; baseSalaryPaise?: number }) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       const old = await this.loadFor(c, ctx, p, 'workers.update', id, true);
       if (old.archived_at) throw conflict('This worker is archived. Restore them first.');
@@ -151,6 +153,10 @@ export class WorkersService {
         before.productCommissionRatePercent = old.product_commission_rate_percent;
         after.productCommissionRatePercent = dto.productCommissionRatePercent;
       }
+      if (dto.baseSalaryPaise !== undefined && Number(dto.baseSalaryPaise) !== Number(old.base_salary_paise)) {
+        before.baseSalaryPaise = old.base_salary_paise;
+        after.baseSalaryPaise = dto.baseSalaryPaise;
+      }
       if (Object.keys(after).length) {
         await c.query(
           `UPDATE workers
@@ -158,9 +164,10 @@ export class WorkersService {
                status = COALESCE($3, status),
                commission_rate_percent = COALESCE($4, commission_rate_percent),
                product_commission_rate_percent = COALESCE($5, product_commission_rate_percent),
+               base_salary_paise = COALESCE($6, base_salary_paise),
                updated_at = now()
            WHERE id = $1`,
-          [id, dto.displayName ?? null, dto.status ?? null, dto.commissionRatePercent ?? null, dto.productCommissionRatePercent ?? null]
+          [id, dto.displayName ?? null, dto.status ?? null, dto.commissionRatePercent ?? null, dto.productCommissionRatePercent ?? null, dto.baseSalaryPaise ?? null]
         );
         await this.audit.log(c, { shopId: ctx.shopId, userId: ctx.userId, action: 'worker.update', entity: 'worker', entityId: id, oldValues: before, newValues: after, ip: ctx.ip });
       }

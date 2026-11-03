@@ -98,9 +98,9 @@ async function seed() {
 
     // 5. Workers: Rahul, Amit, Raj
     const demoWorkers = [
-      { name: 'Rahul', phone: '+919876500101', email: 'rahul@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard'], comm: 40, pComm: 10 },
-      { name: 'Amit', phone: '+919876500102', email: 'amit@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard', 'Hair Spa'], comm: 40, pComm: 10 },
-      { name: 'Raj', phone: '+919876500103', email: 'raj@classicbarber.com', services: ['Haircut', 'Hair Spa'], comm: 35, pComm: 10 },
+      { name: 'Rahul', phone: '+919876500101', email: 'rahul@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard'], comm: 40, pComm: 10, baseSalary: 2500000 },
+      { name: 'Amit', phone: '+919876500102', email: 'amit@classicbarber.com', services: ['Haircut', 'Beard Trim', 'Hair + Beard', 'Hair Spa'], comm: 40, pComm: 10, baseSalary: 2200000 },
+      { name: 'Raj', phone: '+919876500103', email: 'raj@classicbarber.com', services: ['Haircut', 'Hair Spa'], comm: 35, pComm: 10, baseSalary: 2000000 },
     ];
 
     for (const w of demoWorkers) {
@@ -118,13 +118,13 @@ async function seed() {
       let workerRec = (await pool.query(`SELECT id FROM workers WHERE shop_id = $1 AND user_id = $2`, [shopId, workerUser.id])).rows[0];
       if (!workerRec) {
         workerRec = (await pool.query(
-          `INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-          [shopId, workerUser.id, w.name, w.phone, w.comm, w.pComm]
+          `INSERT INTO workers (shop_id, user_id, display_name, phone, commission_rate_percent, product_commission_rate_percent, base_salary_paise) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [shopId, workerUser.id, w.name, w.phone, w.comm, w.pComm, w.baseSalary]
         )).rows[0];
       } else {
         await pool.query(
-          `UPDATE workers SET commission_rate_percent = $1, product_commission_rate_percent = $2 WHERE id = $3`,
-          [w.comm, w.pComm, workerRec.id]
+          `UPDATE workers SET commission_rate_percent = $1, product_commission_rate_percent = $2, base_salary_paise = $3 WHERE id = $4`,
+          [w.comm, w.pComm, w.baseSalary, workerRec.id]
         );
       }
       const wid = workerRec.id;
@@ -478,6 +478,40 @@ async function seed() {
           c.applicableTo,
           c.maxRedemptionsPerCustomer,
         ]
+      );
+    }
+
+    // 12. Staff Attendance & Salary Advances (Phase 5 Demo)
+    const rahulWorker = (await pool.query(`SELECT id FROM workers WHERE shop_id = $1 AND display_name = 'Rahul'`, [shopId])).rows[0];
+    const amitWorker = (await pool.query(`SELECT id FROM workers WHERE shop_id = $1 AND display_name = 'Amit'`, [shopId])).rows[0];
+
+    if (rahulWorker) {
+      // Clock in for Rahul today
+      await pool.query(
+        `INSERT INTO worker_attendance (shop_id, worker_id, attendance_date, check_in_at, status, notes)
+         VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + '09:30:00'::time, 'present', 'On time morning shift')
+         ON CONFLICT (worker_id, attendance_date) DO UPDATE SET status = 'present'`,
+        [shopId, rahulWorker.id]
+      );
+
+      // Advance request for Rahul: Rs 3,000 (300,000 paise) approved
+      const advExists = (await pool.query(`SELECT id FROM worker_salary_advances WHERE shop_id = $1 AND worker_id = $2`, [shopId, rahulWorker.id])).rows[0];
+      if (!advExists) {
+        await pool.query(
+          `INSERT INTO worker_salary_advances (shop_id, worker_id, amount_paise, reason, status, approved_by, approved_at, notes)
+           VALUES ($1, $2, 300000, 'Festival Family Expense', 'approved', $3, NOW(), 'Approved by Owner')`,
+          [shopId, rahulWorker.id, ownerUser.id]
+        );
+      }
+    }
+
+    if (amitWorker) {
+      // Clock in for Amit today
+      await pool.query(
+        `INSERT INTO worker_attendance (shop_id, worker_id, attendance_date, check_in_at, status, notes)
+         VALUES ($1, $2, CURRENT_DATE, CURRENT_DATE + '09:45:00'::time, 'present', 'Morning shift')
+         ON CONFLICT (worker_id, attendance_date) DO UPDATE SET status = 'present'`,
+        [shopId, amitWorker.id]
       );
     }
 

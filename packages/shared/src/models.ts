@@ -28,6 +28,7 @@ export interface WorkerItem {
   isActive: boolean;
   commissionRatePercent: number;
   productCommissionRatePercent?: number;
+  baseSalaryPaise?: number;
   services?: string[]; // array of service IDs
   createdAt: string;
   updatedAt: string;
@@ -399,4 +400,68 @@ export interface CouponValidationResult {
   discountPaise: number;
   message?: string;
 }
+
+// Phase 5: Staff Attendance & Salary / Advance Management
+export type AttendanceStatus = 'present' | 'absent' | 'half_day' | 'on_leave';
+
+export interface WorkerAttendanceItem {
+  id: string;
+  shopId: string;
+  workerId: string;
+  workerName?: string;
+  attendanceDate: string; // YYYY-MM-DD
+  checkInAt?: string | null;
+  checkOutAt?: string | null;
+  status: AttendanceStatus;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AdvanceStatus = 'pending' | 'approved' | 'rejected' | 'deducted';
+
+export interface WorkerSalaryAdvanceItem {
+  id: string;
+  shopId: string;
+  workerId: string;
+  workerName?: string;
+  amountPaise: number;
+  reason: string;
+  status: AdvanceStatus;
+  requestedAt: string;
+  approvedBy?: string | null;
+  approvedByName?: string | null;
+  approvedAt?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SettlementStatus = 'draft' | 'approved' | 'paid';
+
+export interface WorkerSalarySettlementItem {
+  id: string;
+  shopId: string;
+  workerId: string;
+  workerName?: string;
+  periodMonth: number; // 1-12
+  periodYear: number;
+  baseSalaryPaise: number;
+  attendanceDaysPresent: number;
+  attendanceDaysHalf: number;
+  attendanceDaysAbsent: number;
+  attendanceDaysLeave: number;
+  proRatedBasePaise: number;
+  commissionEarnedPaise: number;
+  tipEarnedPaise: number;
+  advancesDeductedPaise: number;
+  bonusesPaise: number;
+  netPayablePaise: number;
+  payoutStatus: SettlementStatus;
+  paidAt?: string | null;
+  expenseId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 

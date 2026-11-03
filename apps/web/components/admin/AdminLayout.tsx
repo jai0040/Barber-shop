@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Award,
   Ticket,
+  UserCheck,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -63,6 +64,7 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
     { label: 'Customers', href: '/admin/customers', icon: Users },
     { label: 'Services', href: '/admin/services', icon: Scissors },
     { label: 'Workers / Staff', href: '/admin/workers', icon: Briefcase },
+    { label: 'Staff Attendance', href: '/admin/attendance', icon: UserCheck },
     { label: 'Products & Stock', href: '/admin/inventory', icon: Package },
     { label: 'Finance & Expenses', href: '/admin/finance', icon: TrendingUp },
     { label: 'Reports & Analytics', href: '/admin/reports', icon: BarChart3 },

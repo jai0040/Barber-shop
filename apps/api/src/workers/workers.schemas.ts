@@ -12,6 +12,7 @@ export const createWorkerSchema = z.object({
   email: z.string().trim().optional(),
   commissionRatePercent: z.number().min(0).max(100).optional(),
   productCommissionRatePercent: z.number().min(0).max(100).optional(),
+  baseSalaryPaise: z.number().int().min(0).optional(),
   serviceIds: z.array(uuid).optional(),
   login: loginSchema.optional(),
   linkUserId: uuid.optional(), // e.g. the owner who also cuts hair
@@ -21,6 +22,7 @@ export const updateWorkerSchema = z.object({
   status: z.enum(['active', 'inactive']),
   commissionRatePercent: z.number().min(0).max(100),
   productCommissionRatePercent: z.number().min(0).max(100),
+  baseSalaryPaise: z.number().int().min(0),
 })
   .partial().refine((v) => Object.keys(v).length > 0, 'Nothing to update');
 export const addLoginSchema = loginSchema;

@@ -57,6 +57,10 @@ export const PERMISSIONS: PermissionDef[] = [
   d('commission.manage', 'Record worker commission payouts and adjustments'),
   d('coupons.view', 'View promotional offers and coupons'),
   d('coupons.manage', 'Create, edit, and deactivate promotional coupons'),
+  d('attendance.view', 'View worker attendance', true),
+  d('attendance.manage', 'Record and edit worker attendance'),
+  d('salary.view', 'View worker base salary, advances, and payroll', true),
+  d('salary.manage', 'Configure base salary, approve advances, and settle payroll'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -79,13 +83,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'billing.view', 'billing.create', 'billing.void', 'payments.view', 'payments.record', 'reports.view',
       'loyalty.view', 'loyalty.manage', 'memberships.view', 'memberships.manage',
       'commission.view', 'commission.manage', 'coupons.view', 'coupons.manage',
+      'attendance.view', 'attendance.manage', 'salary.view', 'salary.manage',
     ),
   },
   {
     systemKey: 'worker', name: 'Worker',
     permissions: {
       ...own('dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update',
-        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view'),
+        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view', 'attendance.view', 'salary.view'),
       ...all('services.view', 'products.view'),
     },
   },
