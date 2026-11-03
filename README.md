@@ -58,6 +58,19 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Comprehensive shop admin attendance board, logs, advance review, and monthly payroll sheet generator (`/admin/attendance`).
   - Automated expense recording under `Salaries & Commissions` upon payroll settlement disbursement.
 
+- **Customer Reviews & Ratings Engine (Phase 6)**:
+  - Post-appointment customer review submission with 1–5 star overall ratings, individual barber ratings, and comments.
+  - Anti-duplicate review guarantee per appointment; rejects reviews for non-completed appointments.
+  - Public reviews showcase (`/[slug]/reviews`) with rating breakdown, distribution bars, verified client badges, and owner replies.
+  - Admin review moderation board (`/admin/reviews`) with publish, hide, flag controls, and 1-click owner replies.
+  - Customer self-service "Rate & Review" modal directly on past completed visits (`/my-account`).
+
+- **In-System Notifications & WhatsApp Alert Engine (Phase 7)**:
+  - Real-time in-app alert dispatcher with unread badge counter in admin header (`NotificationBell`).
+  - Automated event trigger hooks for new bookings, appointment confirmations, status changes, POS payments, low-stock alerts, and 5-star customer reviews.
+  - Ready-to-send click-to-chat WhatsApp deep links (`https://wa.me/...`) for digital receipts and appointment confirmations.
+  - Customer portal alerts and 1-click WhatsApp share buttons on appointment records (`/my-account`).
+
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
   - Worker-service capability matrix (barbers only assigned to services they can perform).
@@ -152,9 +165,10 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 - `http://localhost:3000/classic-barber/book` — 4-step mobile booking flow.
 - `http://localhost:3000/classic-barber/services` — Public service menu with prices and categories.
 - `http://localhost:3000/classic-barber/memberships` — Public VIP membership plans & perks catalog.
+- `http://localhost:3000/classic-barber/reviews` — Public customer reviews, star breakdown, and owner replies.
 - `http://localhost:3000/classic-barber/barbers` — Public barber team profiles and capabilities.
 - `http://localhost:3000/classic-barber/products` — In-shop retail product catalog.
-- `http://localhost:3000/my-account` — Customer self-service appointments, loyalty points balance, and active VIP membership status.
+- `http://localhost:3000/my-account` — Customer self-service appointments, loyalty points balance, active VIP membership status, and Rate & Review modal.
 
 ### Worker Station
 - `http://localhost:3000/worker` — Barber chair queue, status transitions, and on-chair service additions.
@@ -164,6 +178,7 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 - `http://localhost:3000/admin/appointments` — Calendar / list appointment manager & walk-in assignment.
 - `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, VIP perks, loyalty point redemption, promo coupon codes, cash change, and UPI QR.
 - `http://localhost:3000/admin/attendance` — Staff daily attendance board, logs, salary advances, and monthly payroll sheets.
+- `http://localhost:3000/admin/reviews` — Customer review moderation board and owner reply composer.
 - `http://localhost:3000/admin/coupons` — Promotional coupon codes, campaign rules, limits, and redemptions.
 - `http://localhost:3000/admin/memberships` — VIP Membership plans, customer subscriptions, loyalty configuration, and manual points adjustments.
 - `http://localhost:3000/admin/customers` — Client directory, service history, and notes.
@@ -183,7 +198,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### Test Coverage (100% Passing — 280 / 280 Tests across 18 Suites)
+### Test Coverage (100% Passing — 300 / 300 Tests across 20 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `attendance-salary.test.ts` — Shift clock-in/out, historical overrides, base salary configuration, advance approvals, pro-rated payroll calculation, automatic expense logging, and cross-shop isolation.
@@ -195,13 +210,15 @@ npm test
 9. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
 10. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
 11. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
-12. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-13. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-14. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-15. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-16. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-17. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-18. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+12. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.
+13. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+14. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+15. `reviews-ratings.test.ts` — Customer 1–5 star reviews, duplicate prevention, public ratings summary, barber feedback, owner replies, moderation, and tenant isolation.
+16. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+17. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+18. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+19. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+20. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 
