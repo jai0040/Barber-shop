@@ -464,4 +464,40 @@ export interface WorkerSalarySettlementItem {
   updatedAt: string;
 }
 
+// Phase 6: Customer Reviews & Ratings Engine
+export type ReviewStatus = 'published' | 'hidden' | 'flagged';
+
+export interface ReviewItem {
+  id: string;
+  shopId: string;
+  appointmentId?: string | null;
+  customerId: string;
+  customerName?: string;
+  workerId?: string | null;
+  workerName?: string | null;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  rating: number; // 1-5
+  barberRating?: number | null; // 1-5
+  comment?: string | null;
+  status: ReviewStatus;
+  ownerReply?: string | null;
+  ownerRepliedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewSummary {
+  averageRating: number;
+  totalReviews: number;
+  ratingDistribution: {
+    1: number;
+    2: number;
+    3: number;
+    4: number;
+    5: number;
+  };
+}
+
+
 

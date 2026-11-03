@@ -56,4 +56,12 @@ export class MyCustomerController {
     if (!custId) return null;
     return this.memberships.getActiveCustomerMembership(shopId, custId);
   }
+
+  @Get('appointments')
+  async myAppointments(@Auth() ctx: AuthContext, @Param('slug', new ZodValidationPipe(slugParam)) slug: string) {
+    const shopId = await this.svc.shopBySlug(slug);
+    const custId = await this.svc.myCustomerId(ctx, shopId);
+    if (!custId) return [];
+    return this.svc.myAppointments(shopId, custId);
+  }
 }

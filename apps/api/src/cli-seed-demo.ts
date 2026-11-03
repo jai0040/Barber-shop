@@ -515,6 +515,34 @@ async function seed() {
       );
     }
 
+    // 13. Customer Reviews & Ratings (Phase 6 Demo)
+    const sureshCustomer = (await pool.query(`SELECT id FROM customers WHERE shop_id = $1 AND name = 'Suresh Raina'`, [shopId])).rows[0];
+    const jayantCustomer = (await pool.query(`SELECT id FROM customers WHERE shop_id = $1 AND name = 'Jayant Patel'`, [shopId])).rows[0];
+    const rajWorker = (await pool.query(`SELECT id FROM workers WHERE shop_id = $1 AND display_name = 'Raj'`, [shopId])).rows[0];
+
+    if (sureshCustomer && rajWorker) {
+      const revExists = (await pool.query(`SELECT id FROM reviews WHERE shop_id = $1 AND customer_id = $2`, [shopId, sureshCustomer.id])).rows[0];
+      if (!revExists) {
+        await pool.query(
+          `INSERT INTO reviews (shop_id, customer_id, worker_id, rating, barber_rating, comment, status, owner_reply, owner_replied_at)
+           VALUES ($1, $2, $3, 5, 5, 'The Hair Spa by Raj was unbelievably relaxing! Super clean shop and professional service.', 'published',
+                   'Thank you Suresh! Glad you enjoyed the steam therapy and head massage.', NOW())`,
+          [shopId, sureshCustomer.id, rajWorker.id]
+        );
+      }
+    }
+
+    if (jayantCustomer && rahulWorker) {
+      const revExists = (await pool.query(`SELECT id FROM reviews WHERE shop_id = $1 AND customer_id = $2`, [shopId, jayantCustomer.id])).rows[0];
+      if (!revExists) {
+        await pool.query(
+          `INSERT INTO reviews (shop_id, customer_id, worker_id, rating, barber_rating, comment, status)
+           VALUES ($1, $2, $3, 5, 5, 'Rahul is hands down the best stylist in town. Sharp beard fade every single time.', 'published')`,
+          [shopId, jayantCustomer.id, rahulWorker.id]
+        );
+      }
+    }
+
     console.log('✅ Realistic demo data successfully seeded for Classic Barber Shop!');
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);

@@ -228,6 +228,58 @@ export class CustomersService {
     });
   }
 
+  async myAppointments(shopId: string, customerId: string) {
+    return this.db.tenant({ shopId }, async (c) => {
+      const rows = (
+        await c.query(
+          `
+        SELECT 
+          a.id,
+          a.appointment_number as "appointmentNumber",
+          a.status,
+          a.date::text as "date",
+          a.start_time::text as "startTime",
+          a.end_time::text as "endTime",
+          a.total_amount_paise as "totalAmountPaise",
+          w.id as "workerId",
+          w.display_name as "workerName",
+          COALESCE(
+            (
+              SELECT json_agg(json_build_object('id', s.service_id, 'name', COALESCE(s.name_snapshot, s.service_name), 'pricePaise', COALESCE(s.price_paise, s.unit_price_paise)))
+              FROM appointment_services s
+              WHERE s.appointment_id = a.id AND s.removed_at IS NULL
+            ),
+            '[]'::json
+          ) as services,
+          r.id as "reviewId",
+          r.rating as "reviewRating",
+          r.comment as "reviewComment"
+        FROM appointments a
+        LEFT JOIN workers w ON w.id = a.worker_id
+        LEFT JOIN reviews r ON r.appointment_id = a.id
+        WHERE a.customer_id = $1
+        ORDER BY a.start_at DESC
+        LIMIT 50
+      `,
+          [customerId]
+        )
+      ).rows;
+
+      return rows.map((r) => ({
+        id: r.id,
+        appointmentNumber: r.appointmentNumber,
+        status: r.status,
+        date: r.date,
+        startTime: r.startTime ? r.startTime.slice(0, 5) : null,
+        endTime: r.endTime ? r.endTime.slice(0, 5) : null,
+        totalAmountPaise: r.totalAmountPaise,
+        worker: r.workerId ? { id: r.workerId, name: r.workerName } : null,
+        services: r.services,
+        review: r.reviewId ? { id: r.reviewId, rating: r.reviewRating, comment: r.reviewComment } : null,
+      }));
+    });
+  }
+
   // ----- helpers -----
   private async assertWorker(c: PoolClient, id: string) {
     if (!(await c.query(`SELECT 1 FROM workers WHERE id=$1 AND archived_at IS NULL AND status='active'`, [id])).rowCount) throw bad('That barber is not available.');

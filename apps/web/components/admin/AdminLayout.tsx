@@ -25,6 +25,7 @@ import {
   Award,
   Ticket,
   UserCheck,
+  Star,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -70,6 +71,7 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
     { label: 'Reports & Analytics', href: '/admin/reports', icon: BarChart3 },
     { label: 'Loyalty & Plans', href: '/admin/memberships', icon: Award },
     { label: 'Offers & Coupons', href: '/admin/coupons', icon: Ticket },
+    { label: 'Reviews & Ratings', href: '/admin/reviews', icon: Star },
     { label: 'Shop Settings', href: '/admin/settings', icon: Settings },
   ];
 

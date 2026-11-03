@@ -23,8 +23,24 @@ import {
   Crown,
   Award,
   Percent,
+  Star,
+  X,
+  MessageSquare,
 } from 'lucide-react';
 import { CustomerLoyaltySummary, CustomerMembership } from '@barbershop/shared';
+
+interface CustomerAppointment {
+  id: string;
+  appointmentNumber: number;
+  status: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  totalAmountPaise: number;
+  worker: { id: string; name: string } | null;
+  services: { id: string; name: string; pricePaise: number }[];
+  review: { id: string; rating: number; comment?: string } | null;
+}
 
 interface CustomerProfile {
   name: string;
@@ -43,6 +59,13 @@ export default function MyAccountPage() {
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [loyalty, setLoyalty] = useState<CustomerLoyaltySummary | null>(null);
   const [membership, setMembership] = useState<CustomerMembership | null>(null);
+  const [appointments, setAppointments] = useState<CustomerAppointment[]>([]);
+  const [loadingAppts, setLoadingAppts] = useState<boolean>(false);
+  const [reviewModalAppt, setReviewModalAppt] = useState<CustomerAppointment | null>(null);
+  const [rating, setRating] = useState<number>(5);
+  const [barberRating, setBarberRating] = useState<number>(5);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
   const [joinStatus, setJoinStatus] = useState<'linked' | 'pending' | 'not_joined' | 'loading'>('loading');
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -60,6 +83,18 @@ export default function MyAccountPage() {
     loadProfile();
   }, [router]);
 
+  async function loadAppointments() {
+    try {
+      setLoadingAppts(true);
+      const appts = await apiRequest<CustomerAppointment[]>(`/me/shops/${slug}/appointments`);
+      setAppointments(appts || []);
+    } catch {
+      // appointments fail silently if user not yet linked
+    } finally {
+      setLoadingAppts(false);
+    }
+  }
+
   async function loadProfile() {
     try {
       setJoinStatus('loading');
@@ -74,16 +109,47 @@ export default function MyAccountPage() {
         setProfile(res.profile);
         setNotes(res.profile.notes || '');
 
-        // Fetch customer loyalty and active membership
-        const [lRes, mRes] = await Promise.all([
+        // Fetch customer loyalty, active membership, and appointment history
+        const [lRes, mRes, aRes] = await Promise.all([
           apiRequest<CustomerLoyaltySummary>(`/me/shops/${slug}/loyalty`).catch(() => null),
           apiRequest<CustomerMembership>(`/me/shops/${slug}/membership`).catch(() => null),
+          apiRequest<CustomerAppointment[]>(`/me/shops/${slug}/appointments`).catch(() => []),
         ]);
         if (lRes) setLoyalty(lRes);
         if (mRes) setMembership(mRes);
+        if (aRes) setAppointments(aRes);
       }
     } catch (err: any) {
       setError(err.message || 'Could not load your profile.');
+    }
+  }
+
+  async function handleReviewSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reviewModalAppt) return;
+    try {
+      setSubmittingReview(true);
+      setError(null);
+      await apiRequest('/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          slug,
+          appointmentId: reviewModalAppt.id,
+          workerId: reviewModalAppt.worker?.id || undefined,
+          rating,
+          barberRating,
+          comment: reviewComment.trim() || undefined,
+        }),
+      });
+      setSuccessMsg('Thank you! Your verified review has been published.');
+      setReviewModalAppt(null);
+      setReviewComment('');
+      await loadAppointments();
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setError(err.message || 'Failed to submit review.');
+    } finally {
+      setSubmittingReview(false);
     }
   }
 
@@ -423,6 +489,129 @@ export default function MyAccountPage() {
           </div>
         </div>
 
+        {/* Appointment History & Reviews */}
+        {joinStatus === 'linked' && (
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl mb-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-amber-400" />
+                  Appointment History & Reviews
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  View your recent salon visits and leave verified ratings for your barbers.
+                </p>
+              </div>
+              <Link
+                href={`/${slug}/reviews`}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1"
+              >
+                Public Reviews <ChevronRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {loadingAppts ? (
+              <div className="py-8 text-center text-xs text-slate-500">Loading visit history...</div>
+            ) : appointments.length === 0 ? (
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 text-center">
+                <Scissors className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-xs text-slate-400">No appointments recorded yet.</p>
+                <Link
+                  href={`/${slug}/book`}
+                  className="mt-3 inline-block px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
+                >
+                  Book Your First Cut
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {appointments.map((appt) => {
+                  const isCompleted = appt.status === 'completed';
+                  return (
+                    <div
+                      key={appt.id}
+                      className="bg-slate-950 border border-slate-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition hover:border-slate-700"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs text-slate-400 font-bold">
+                            #{appt.appointmentNumber}
+                          </span>
+                          <span className="text-xs text-slate-200 font-semibold">{appt.date}</span>
+                          {appt.startTime && (
+                            <span className="text-xs text-slate-400">
+                              &bull; {appt.startTime} {appt.endTime ? `- ${appt.endTime}` : ''}
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              isCompleted
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : appt.status === 'cancelled'
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}
+                          >
+                            {appt.status.replace('_', ' ')}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-white font-medium">
+                          {appt.services.map((s) => s.name).join(', ') || 'Barber Service'}
+                        </div>
+
+                        <div className="text-xs text-slate-400 flex items-center gap-3">
+                          {appt.worker && (
+                            <span>
+                              Stylist: <span className="text-slate-300 font-medium">{appt.worker.name}</span>
+                            </span>
+                          )}
+                          <span>Total: ₹{(appt.totalAmountPaise / 100).toFixed(0)}</span>
+                        </div>
+
+                        {appt.review && (
+                          <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center gap-2">
+                            <div className="flex items-center text-amber-400">
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <Star
+                                  key={s}
+                                  className={`w-3.5 h-3.5 ${
+                                    s <= appt.review!.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-600'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[11px] text-slate-400">
+                              {appt.review.comment ? `"${appt.review.comment}"` : 'Reviewed'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="shrink-0 flex items-center">
+                        {isCompleted && !appt.review && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReviewModalAppt(appt);
+                              setRating(5);
+                              setBarberRating(5);
+                              setReviewComment('');
+                            }}
+                            className="w-full sm:w-auto px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-400 hover:text-slate-950 border border-amber-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-current" /> Rate & Review
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Quick Booking Callout */}
         <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 border border-amber-500/20 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
@@ -439,6 +628,122 @@ export default function MyAccountPage() {
           </Link>
         </div>
       </main>
+
+      {/* Rate & Review Modal */}
+      {reviewModalAppt && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setReviewModalAppt(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+              Rate Your Experience
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Appointment #{reviewModalAppt.appointmentNumber} &bull; {reviewModalAppt.date}
+              {reviewModalAppt.worker ? ` with ${reviewModalAppt.worker.name}` : ''}
+            </p>
+
+            <form onSubmit={handleReviewSubmit} className="mt-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Overall Experience Rating
+                </label>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => setRating(s)}
+                      className="p-1 focus:outline-none transition hover:scale-110"
+                    >
+                      <Star
+                        className={`w-7 h-7 ${
+                          s <= rating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                  <span className="text-xs text-amber-400 font-bold ml-2">
+                    {rating === 5
+                      ? 'Excellent (5★)'
+                      : rating === 4
+                      ? 'Great (4★)'
+                      : rating === 3
+                      ? 'Average (3★)'
+                      : rating === 2
+                      ? 'Poor (2★)'
+                      : 'Disappointing (1★)'}
+                  </span>
+                </div>
+              </div>
+
+              {reviewModalAppt.worker && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Barber Styling Skill & Hospitality ({reviewModalAppt.worker.name})
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <button
+                        type="button"
+                        key={s}
+                        onClick={() => setBarberRating(s)}
+                        className="p-1 focus:outline-none transition hover:scale-110"
+                      >
+                        <Star
+                          className={`w-6 h-6 ${
+                            s <= barberRating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                    <span className="text-xs text-slate-400 font-medium ml-2">
+                      {barberRating} of 5 stars
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Feedback & Comments (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Tell us what you loved about your haircut or experience..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition-colors"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewModalAppt(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingReview}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-lg disabled:opacity-50 transition"
+                >
+                  {submittingReview ? 'Submitting...' : 'Publish Verified Review'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <BottomNav shopSlug={slug} />
     </div>

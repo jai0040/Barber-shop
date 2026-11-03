@@ -61,6 +61,8 @@ export const PERMISSIONS: PermissionDef[] = [
   d('attendance.manage', 'Record and edit worker attendance'),
   d('salary.view', 'View worker base salary, advances, and payroll', true),
   d('salary.manage', 'Configure base salary, approve advances, and settle payroll'),
+  d('reviews.view', 'View customer reviews and ratings', true),
+  d('reviews.manage', 'Moderate and reply to customer reviews'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -84,13 +86,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'loyalty.view', 'loyalty.manage', 'memberships.view', 'memberships.manage',
       'commission.view', 'commission.manage', 'coupons.view', 'coupons.manage',
       'attendance.view', 'attendance.manage', 'salary.view', 'salary.manage',
+      'reviews.view', 'reviews.manage',
     ),
   },
   {
     systemKey: 'worker', name: 'Worker',
     permissions: {
       ...own('dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update',
-        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view', 'attendance.view', 'salary.view'),
+        'appointments.add_service', 'customers.view', 'customers.create', 'customers.update', 'workers.performance.view', 'workers.view', 'commission.view', 'attendance.view', 'salary.view', 'reviews.view'),
       ...all('services.view', 'products.view'),
     },
   },
