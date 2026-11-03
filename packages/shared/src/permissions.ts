@@ -55,6 +55,8 @@ export const PERMISSIONS: PermissionDef[] = [
   d('memberships.manage', 'Create/edit membership plans and subscriptions'),
   d('commission.view', 'View worker commissions, tips, and payouts', true),
   d('commission.manage', 'Record worker commission payouts and adjustments'),
+  d('coupons.view', 'View promotional offers and coupons'),
+  d('coupons.manage', 'Create, edit, and deactivate promotional coupons'),
 ];
 export const PERMISSION_KEYS = PERMISSIONS.map((p) => p.key);
 
@@ -76,7 +78,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'products.view', 'products.create', 'products.update', 'inventory.view', 'inventory.manage',
       'billing.view', 'billing.create', 'billing.void', 'payments.view', 'payments.record', 'reports.view',
       'loyalty.view', 'loyalty.manage', 'memberships.view', 'memberships.manage',
-      'commission.view', 'commission.manage',
+      'commission.view', 'commission.manage', 'coupons.view', 'coupons.manage',
     ),
   },
   {
@@ -93,7 +95,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       'dashboard.view', 'appointments.view', 'appointments.create', 'appointments.update', 'appointments.add_service',
       'customers.view', 'customers.create', 'customers.update', 'services.view', 'products.view',
       'billing.view', 'billing.create', 'payments.view', 'payments.record',
-      'loyalty.view', 'memberships.view', 'commission.view',
+      'loyalty.view', 'memberships.view', 'commission.view', 'coupons.view',
     ),
   },
   {

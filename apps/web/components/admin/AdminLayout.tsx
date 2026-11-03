@@ -23,6 +23,7 @@ import {
   Smartphone,
   ChevronRight,
   Award,
+  Ticket,
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -66,6 +67,7 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
     { label: 'Finance & Expenses', href: '/admin/finance', icon: TrendingUp },
     { label: 'Reports & Analytics', href: '/admin/reports', icon: BarChart3 },
     { label: 'Loyalty & Plans', href: '/admin/memberships', icon: Award },
+    { label: 'Offers & Coupons', href: '/admin/coupons', icon: Ticket },
     { label: 'Shop Settings', href: '/admin/settings', icon: Settings },
   ];
 

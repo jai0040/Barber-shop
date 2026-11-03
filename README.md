@@ -43,6 +43,13 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Payout settlements (`worker_payouts`) with optional automatic shop expense logging under `Salaries & Commissions`.
   - Barber self-service earnings card (`/worker`), POS billing tip selector (`/admin/billing`), admin finance payroll ledger and payout settlement modal (`/admin/finance`), and worker commission rate configuration (`/admin/workers`).
 
+- **Promotional Offers & Discount Coupon Engine (Phase 4)**:
+  - Promo code management (`/admin/coupons`) supporting percentage discounts with optional caps and flat discounts in paise.
+  - Configurable minimum order values, expiration dates, total usage caps, and per-customer usage limits.
+  - Category-scoped applicability (`all`, `services_only`, `products_only`).
+  - Real-time POS checkout validation and 1-click apply widget (`/admin/billing`).
+  - Append-only `coupon_redemptions` ledger with PostgreSQL RLS and automatic immutable reversal tracking upon invoice voiding.
+
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
   - Worker-service capability matrix (barbers only assigned to services they can perform).
@@ -100,8 +107,8 @@ npm run dev:api
 ```
 This single command automatically:
 1. Boots embedded PostgreSQL on port `5432` with data stored in `.data/postgres/`.
-2. Applies all database migrations (`001_core.sql` through `008_commission_tips_payroll.sql`).
-3. Seeds comprehensive demo data for **Classic Barber Shop** (including loyalty rules, VIP plans, barber commission rates, and customer balances).
+2. Applies all database migrations (`001_core.sql` through `009_coupons_offers.sql`).
+3. Seeds comprehensive demo data for **Classic Barber Shop** (including loyalty rules, VIP plans, barber commission rates, promotional coupons, and customer balances).
 4. Starts the NestJS API on **`http://localhost:4000/api/v1`**.
 
 ### 3. Start the Web Frontend
@@ -147,7 +154,8 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 ### Shop Admin Panel
 - `http://localhost:3000/admin/dashboard` — Daily overview metrics (appointments, active chair, revenue).
 - `http://localhost:3000/admin/appointments` — Calendar / list appointment manager & walk-in assignment.
-- `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, VIP perks, loyalty point redemption, cash change, and UPI QR.
+- `http://localhost:3000/admin/billing` — Point of Sale (POS) checkout, VIP perks, loyalty point redemption, promo coupon codes, cash change, and UPI QR.
+- `http://localhost:3000/admin/coupons` — Promotional coupon codes, campaign rules, limits, and redemptions.
 - `http://localhost:3000/admin/memberships` — VIP Membership plans, customer subscriptions, loyalty configuration, and manual points adjustments.
 - `http://localhost:3000/admin/customers` — Client directory, service history, and notes.
 - `http://localhost:3000/admin/inventory` — Product catalog, stock levels, adjustments, and low-stock alerts.
@@ -166,23 +174,24 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### Test Coverage (100% Passing — 260 / 260 Tests across 16 Suites)
+### Test Coverage (100% Passing — 269 / 269 Tests across 17 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `auth-rbac.test.ts` — Granular RBAC permission enforcement, Argon2 password hashing, refresh token family rotation, CSRF cookie security, escalation prevention.
 4. `billing-products-finance.test.ts` — Inventory stock-in, damage adjustments, POS checkout, cash change calculation, UPI QR, and net result ledger.
 5. `catalog.test.ts` — Service categories, integer paise validation, price history audit, active/archived state, public catalog grouping.
 6. `commission-payroll.test.ts` — Service & product commission auto-accrual, POS checkout tips, payout settlements, ledger reversals upon voiding, RBAC `own` scope enforcement, and tenant isolation.
-7. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
-8. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
-9. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
-10. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-11. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-12. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-13. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-14. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-15. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-16. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+7. `coupons-offers.test.ts` — Promotional coupon validation, percentage caps & flat discounts, category-scoped rules, usage limits, per-customer caps, and immutable ledger reversal upon voiding.
+8. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
+9. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
+10. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
+11. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
+12. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+13. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+14. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+15. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+16. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+17. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 

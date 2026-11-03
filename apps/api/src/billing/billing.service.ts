@@ -19,6 +19,7 @@ export class BillingService {
       customerId?: string | null;
       workerId?: string | null;
       discountPaise?: number;
+      couponCode?: string | null;
       tipPaise?: number;
       redeemPoints?: number;
       customerMembershipId?: string | null;
@@ -34,8 +35,13 @@ export class BillingService {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       // 1. Calculate totals
       let subtotal = 0;
+      let serviceSubtotal = 0;
+      let productSubtotal = 0;
       for (const it of dto.items) {
-        subtotal += it.unitPricePaise * it.quantity;
+        const lineTotal = it.unitPricePaise * it.quantity;
+        subtotal += lineTotal;
+        if (it.type === 'service') serviceSubtotal += lineTotal;
+        if (it.type === 'product') productSubtotal += lineTotal;
       }
       let discount = dto.discountPaise ?? 0;
 
@@ -88,6 +94,84 @@ export class BillingService {
         discount += pointsDiscountPaise;
       }
 
+      // Handle Coupon Code Discount
+      let couponId: string | null = null;
+      let couponDiscountPaise = 0;
+
+      if (dto.couponCode) {
+        const cleanCode = dto.couponCode.trim().toUpperCase();
+        const couponRow = (
+          await c.query(`SELECT * FROM coupons WHERE shop_id = $1 AND code = $2 FOR UPDATE`, [
+            ctx.shopId,
+            cleanCode,
+          ])
+        ).rows[0];
+
+        if (!couponRow) {
+          throw badRequest(`Coupon "${cleanCode}" does not exist.`);
+        }
+        if (!couponRow.is_active) {
+          throw badRequest(`Coupon "${cleanCode}" is no longer active.`);
+        }
+
+        const now = new Date();
+        if (new Date(couponRow.valid_from) > now) {
+          throw badRequest(`Coupon "${cleanCode}" is not yet valid.`);
+        }
+        if (couponRow.valid_until && new Date(couponRow.valid_until) < now) {
+          throw badRequest(`Coupon "${cleanCode}" has expired.`);
+        }
+        if (
+          couponRow.max_redemptions_total &&
+          Number(couponRow.times_redeemed) >= Number(couponRow.max_redemptions_total)
+        ) {
+          throw badRequest(`Coupon "${cleanCode}" has reached its maximum total redemptions limit.`);
+        }
+
+        if (dto.customerId) {
+          const uses = (
+            await c.query(
+              `SELECT COALESCE(SUM(CASE WHEN type = 'redemption' THEN 1 WHEN type = 'reversal' THEN -1 ELSE 0 END), 0)::int AS count
+               FROM coupon_redemptions WHERE shop_id = $1 AND coupon_id = $2 AND customer_id = $3`,
+              [ctx.shopId, couponRow.id, dto.customerId]
+            )
+          ).rows[0].count;
+
+          if (uses >= Number(couponRow.max_redemptions_per_customer)) {
+            throw badRequest(
+              `Customer has already redeemed coupon "${cleanCode}" the maximum allowed times (${couponRow.max_redemptions_per_customer}).`
+            );
+          }
+        }
+
+        if (subtotal < Number(couponRow.min_order_paise)) {
+          throw badRequest(
+            `Minimum order amount of Rs ${(Number(couponRow.min_order_paise) / 100).toFixed(0)} required to use coupon "${cleanCode}".`
+          );
+        }
+
+        let basePaise = subtotal;
+        if (couponRow.applicable_to === 'services') basePaise = serviceSubtotal;
+        else if (couponRow.applicable_to === 'products') basePaise = productSubtotal;
+
+        if (basePaise <= 0) {
+          throw badRequest(`Coupon "${cleanCode}" is only applicable to ${couponRow.applicable_to}.`);
+        }
+
+        if (couponRow.discount_type === 'flat') {
+          couponDiscountPaise = Math.min(basePaise, Number(couponRow.discount_value));
+        } else {
+          const raw = Math.round((basePaise * Number(couponRow.discount_value)) / 100);
+          couponDiscountPaise = couponRow.max_discount_paise
+            ? Math.min(raw, Number(couponRow.max_discount_paise))
+            : raw;
+          couponDiscountPaise = Math.min(basePaise, couponDiscountPaise);
+        }
+
+        couponId = couponRow.id;
+        discount += couponDiscountPaise;
+      }
+
       const tipPaise = Number(dto.tipPaise || 0);
       const finalTotal = Math.max(0, subtotal - discount) + tipPaise;
 
@@ -101,13 +185,41 @@ export class BillingService {
       const invRes = await c.query(
         `INSERT INTO invoices (
            shop_id, invoice_number, appointment_id, customer_id, worker_id,
-           subtotal_paise, discount_paise, tip_paise, final_total_paise, payment_status
+           subtotal_paise, discount_paise, coupon_id, coupon_discount_paise, tip_paise, final_total_paise, payment_status
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
          RETURNING id`,
-        [ctx.shopId, invoiceNumber, dto.appointmentId ?? null, dto.customerId ?? null, dto.workerId ?? null, subtotal, discount, tipPaise, finalTotal, initialStatus]
+        [
+          ctx.shopId,
+          invoiceNumber,
+          dto.appointmentId ?? null,
+          dto.customerId ?? null,
+          dto.workerId ?? null,
+          subtotal,
+          discount,
+          couponId,
+          couponDiscountPaise,
+          tipPaise,
+          finalTotal,
+          initialStatus,
+        ]
       );
       const invoiceId = invRes.rows[0].id;
+
+      // Record coupon redemption
+      if (couponId && couponDiscountPaise > 0) {
+        await c.query(
+          `INSERT INTO coupon_redemptions (shop_id, coupon_id, invoice_id, customer_id, type, discount_paise)
+           VALUES ($1, $2, $3, $4, 'redemption', $5)`,
+          [ctx.shopId, couponId, invoiceId, dto.customerId ?? null, couponDiscountPaise]
+        );
+
+        await c.query(
+          `UPDATE coupons SET times_redeemed = times_redeemed + 1, updated_at = now()
+           WHERE id = $1 AND shop_id = $2`,
+          [couponId, ctx.shopId]
+        );
+      }
 
       // Deduct loyalty points and log ledger
       if (pointsToRedeem > 0 && customerRow) {
@@ -477,6 +589,21 @@ export class BillingService {
         }
       }
 
+      // Revert coupon redemptions if any
+      if (inv.coupon_id) {
+        await c.query(
+          `INSERT INTO coupon_redemptions (shop_id, coupon_id, invoice_id, customer_id, type, discount_paise)
+           VALUES ($1, $2, $3, $4, 'reversal', $5)`,
+          [ctx.shopId, inv.coupon_id, invoiceId, inv.customer_id, -Number(inv.coupon_discount_paise || 0)]
+        );
+
+        await c.query(
+          `UPDATE coupons SET times_redeemed = GREATEST(0, times_redeemed - 1), updated_at = now()
+           WHERE id = $1 AND shop_id = $2`,
+          [inv.coupon_id, ctx.shopId]
+        );
+      }
+
       await this.audit.log(c, {
         shopId: ctx.shopId,
         userId: ctx.userId,
@@ -552,6 +679,7 @@ export class BillingService {
     const row = (await c.query(
       `SELECT inv.id, inv.invoice_number, inv.appointment_id, inv.customer_id, c.name AS customer_name,
               inv.worker_id, w.display_name AS worker_name, inv.subtotal_paise, inv.discount_paise,
+              inv.coupon_id, inv.coupon_discount_paise, inv.tip_paise,
               inv.final_total_paise, inv.payment_status, inv.created_at, inv.updated_at
        FROM invoices inv
        LEFT JOIN customers c ON c.id = inv.customer_id
@@ -589,6 +717,8 @@ export class BillingService {
       workerName: row.worker_name ?? null,
       subtotalPaise: Number(row.subtotal_paise),
       discountPaise: Number(row.discount_paise),
+      couponId: row.coupon_id ?? null,
+      couponDiscountPaise: Number(row.coupon_discount_paise || 0),
       tipPaise: Number(row.tip_paise || 0),
       finalTotalPaise: Number(row.final_total_paise),
       paymentStatus: row.payment_status,

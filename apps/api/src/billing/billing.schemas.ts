@@ -13,6 +13,7 @@ export const createInvoiceSchema = z.object({
   customerId: z.string().uuid().optional().nullable(),
   workerId: z.string().uuid().optional().nullable(),
   discountPaise: z.number().int().min(0).default(0),
+  couponCode: z.string().trim().optional().nullable(),
   tipPaise: z.number().int().min(0).default(0),
   redeemPoints: z.number().int().min(0).optional(),
   customerMembershipId: z.string().uuid().optional().nullable(),

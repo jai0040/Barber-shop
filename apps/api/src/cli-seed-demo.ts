@@ -416,6 +416,71 @@ async function seed() {
       );
     }
 
+    // Phase 4: Promotional Coupons & Offers
+    const demoCoupons = [
+      {
+        code: 'WELCOME10',
+        description: '10% off for all customers up to Rs 150',
+        discountType: 'percentage',
+        discountValue: 10,
+        maxDiscountPaise: 15000,
+        minOrderPaise: 30000,
+        applicableTo: 'all',
+        maxRedemptionsPerCustomer: 1,
+      },
+      {
+        code: 'FLAT100',
+        description: 'Flat Rs 100 off on bills over Rs 500',
+        discountType: 'flat',
+        discountValue: 10000,
+        maxDiscountPaise: null,
+        minOrderPaise: 50000,
+        applicableTo: 'all',
+        maxRedemptionsPerCustomer: 3,
+      },
+      {
+        code: 'FESTIVE20',
+        description: '20% off all grooming services',
+        discountType: 'percentage',
+        discountValue: 20,
+        maxDiscountPaise: 20000,
+        minOrderPaise: 0,
+        applicableTo: 'services',
+        maxRedemptionsPerCustomer: 2,
+      },
+    ];
+
+    for (const c of demoCoupons) {
+      await pool.query(
+        `INSERT INTO coupons (
+           shop_id, code, description, discount_type, discount_value,
+           max_discount_paise, min_order_paise, applicable_to,
+           max_redemptions_per_customer, is_active
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+         ON CONFLICT (shop_id, code) DO UPDATE SET
+           description = EXCLUDED.description,
+           discount_type = EXCLUDED.discount_type,
+           discount_value = EXCLUDED.discount_value,
+           max_discount_paise = EXCLUDED.max_discount_paise,
+           min_order_paise = EXCLUDED.min_order_paise,
+           applicable_to = EXCLUDED.applicable_to,
+           max_redemptions_per_customer = EXCLUDED.max_redemptions_per_customer,
+           is_active = true`,
+        [
+          shopId,
+          c.code,
+          c.description,
+          c.discountType,
+          c.discountValue,
+          c.maxDiscountPaise,
+          c.minOrderPaise,
+          c.applicableTo,
+          c.maxRedemptionsPerCustomer,
+        ]
+      );
+    }
+
     console.log('✅ Realistic demo data successfully seeded for Classic Barber Shop!');
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);

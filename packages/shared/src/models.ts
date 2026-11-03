@@ -164,6 +164,8 @@ export interface InvoiceItem {
   workerName?: string | null;
   subtotalPaise: number;
   discountPaise: number;
+  couponId?: string | null;
+  couponDiscountPaise?: number;
   tipPaise?: number;
   finalTotalPaise: number;
   paymentStatus: 'pending' | 'paid' | 'void';
@@ -359,3 +361,42 @@ export interface WorkerEarningsSummary {
   balancePendingPaise: number;
   recentEntries?: WorkerCommissionEntry[];
 }
+
+// Phase 4: Promotional Offers & Discount Coupons
+export interface CouponItem {
+  id: string;
+  shopId: string;
+  code: string;
+  description?: string | null;
+  discountType: 'percentage' | 'flat';
+  discountValue: number; // percentage (1-100) or flat paise
+  maxDiscountPaise?: number | null;
+  minOrderPaise: number;
+  applicableTo: 'all' | 'services' | 'products';
+  maxRedemptionsTotal?: number | null;
+  maxRedemptionsPerCustomer: number;
+  timesRedeemed: number;
+  validFrom: string;
+  validUntil?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CouponRedemptionItem {
+  id: string;
+  shopId: string;
+  couponId: string;
+  invoiceId: string;
+  customerId?: string | null;
+  discountPaise: number;
+  createdAt: string;
+}
+
+export interface CouponValidationResult {
+  valid: boolean;
+  coupon?: CouponItem;
+  discountPaise: number;
+  message?: string;
+}
+

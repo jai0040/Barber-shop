@@ -22,6 +22,8 @@ import {
   Crown,
   Award,
   Sparkles,
+  Tag,
+  Ticket,
   X,
   Check,
 } from 'lucide-react';
@@ -82,6 +84,13 @@ export default function AdminBillingPage() {
   const [items, setItems] = useState<InvoiceLineItem[]>([]);
   const [discountPaise, setDiscountPaise] = useState<number>(0);
   const [tipPaise, setTipPaise] = useState<number>(0);
+
+  // Phase 4: Coupon / Promo State
+  const [couponCodeInput, setCouponCodeInput] = useState<string>('');
+  const [appliedCoupon, setAppliedCoupon] = useState<any | null>(null);
+  const [couponDiscountPaise, setCouponDiscountPaise] = useState<number>(0);
+  const [couponLoading, setCouponLoading] = useState<boolean>(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   // Payment State
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'upi_qr'>('cash');
@@ -213,6 +222,52 @@ export default function AdminBillingPage() {
     setCustomerLoyalty(null);
     setActiveMembership(null);
     setRedeemPoints(0);
+    setAppliedCoupon(null);
+    setCouponDiscountPaise(0);
+    setCouponError(null);
+  }
+
+  async function handleApplyCoupon() {
+    if (!couponCodeInput.trim()) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      let sPaise = 0;
+      let pPaise = 0;
+      for (const it of items) {
+        if (it.type === 'service') sPaise += it.unitPricePaise * it.quantity;
+        if (it.type === 'product') pPaise += it.unitPricePaise * it.quantity;
+      }
+      const res = await apiRequest<any>('/coupons/validate', {
+        method: 'POST',
+        body: JSON.stringify({
+          code: couponCodeInput.trim().toUpperCase(),
+          subtotalPaise,
+          servicesTotalPaise: sPaise,
+          productsTotalPaise: pPaise,
+          customerId: customerId || undefined,
+        }),
+      });
+      if (!res.valid) {
+        setCouponError(res.message || 'Invalid coupon code');
+        setAppliedCoupon(null);
+        setCouponDiscountPaise(0);
+      } else {
+        setAppliedCoupon(res.coupon);
+        setCouponDiscountPaise(res.discountPaise);
+        setCouponCodeInput('');
+      }
+    } catch (err: any) {
+      setCouponError(err.message || 'Failed to validate coupon');
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    setAppliedCoupon(null);
+    setCouponDiscountPaise(0);
+    setCouponError(null);
   }
 
   function addServiceItem(serviceId: string) {
@@ -302,7 +357,7 @@ export default function AdminBillingPage() {
   const maxDiscountPercentage = loyaltySettings?.maxDiscountPercentage ?? 50;
 
   const pointsDiscountPaise = redeemPoints > 0 ? redeemPoints * pointValuePaise : 0;
-  const totalDiscountPaise = discountPaise + pointsDiscountPaise;
+  const totalDiscountPaise = discountPaise + pointsDiscountPaise + couponDiscountPaise;
   const totalPaise = Math.max(0, subtotalPaise - totalDiscountPaise) + tipPaise;
   const changeDuePaise = Math.max(0, cashTendered * 100 - totalPaise);
 
@@ -357,6 +412,7 @@ export default function AdminBillingPage() {
           customerId: customerId || undefined,
           workerId: workerId || undefined,
           discountPaise,
+          couponCode: appliedCoupon ? appliedCoupon.code : undefined,
           tipPaise: tipPaise > 0 ? tipPaise : undefined,
           redeemPoints: redeemPoints > 0 ? redeemPoints : undefined,
           customerMembershipId: activeMembership ? activeMembership.id : undefined,
@@ -948,6 +1004,73 @@ export default function AdminBillingPage() {
                         />
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* PHASE 4: Promotional Coupon Code Box */}
+                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
+                      <Ticket className="w-3.5 h-3.5" /> Promo / Coupon Code
+                    </div>
+                    {appliedCoupon && (
+                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Applied
+                      </span>
+                    )}
+                  </div>
+
+                  {!appliedCoupon ? (
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          value={couponCodeInput}
+                          onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+                          placeholder="e.g. WELCOME10"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white uppercase font-mono tracking-wider"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={couponLoading || !couponCodeInput.trim()}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 text-slate-950 text-xs font-bold transition-all shadow-md shadow-amber-500/10"
+                      >
+                        {couponLoading ? '...' : 'Apply'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-2.5 py-1.5">
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-mono font-bold">
+                        <Tag className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{appliedCoupon.code}</span>
+                        <span className="text-[10px] text-emerald-400/80 font-normal">
+                          (-{formatINR(couponDiscountPaise)})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="p-1 rounded-lg hover:bg-emerald-500/20 text-emerald-400"
+                        title="Remove coupon"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {couponError && (
+                    <p className="text-[10px] text-rose-400 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" /> {couponError}
+                    </p>
+                  )}
+                </div>
+
+                {couponDiscountPaise > 0 && (
+                  <div className="flex justify-between text-emerald-400">
+                    <span>Coupon ({appliedCoupon?.code}):</span>
+                    <span className="font-mono">-{formatINR(couponDiscountPaise)}</span>
                   </div>
                 )}
 
