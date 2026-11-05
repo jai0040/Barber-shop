@@ -84,6 +84,10 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Export capabilities on Reports & Analytics (`/admin/reports`): Sales & Category Breakdown, Stylist Productivity, Inventory Asset Valuation, and Finance summaries.
   - Export capabilities on Finance & Payroll (`/admin/finance`): Operational Expense Ledger and Staff Commission / Payout Ledgers.
   - Export capabilities on Customer Profiles (`/admin/customers`): Complete customer directory, visit history, and notes.
+  - Export capabilities on Promotional Coupons (`/admin/coupons`): Promo code directory, discount rules, caps, redemptions, and expiry.
+  - Export capabilities on Inventory (`/admin/inventory`): Product catalog, SKU, stock quantities, valuations, and low-stock thresholds.
+  - Export capabilities on Staff Attendance & Payroll (`/admin/attendance`): Today's attendance board, historical logs, salary advances, and monthly payroll sheets.
+  - Export capabilities on Appointments (`/admin/appointments`): Daily and filtered appointments with times, customer contacts, assigned barbers, services, and amounts.
 
 - **Multi-Location & Branch Switcher (Section 85)**:
   - Multi-branch extensible architecture enabling unified owner management across multiple shop locations.
