@@ -27,6 +27,7 @@ export default function CustomerNavbar({ slug, shopSlug }: { slug?: string; shop
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
           <Link href={`/${activeSlug}/services`} className="hover:text-amber-700 transition">Services</Link>
           <Link href={`/${activeSlug}/barbers`} className="hover:text-amber-700 transition">Barbers</Link>
+          <Link href={`/${activeSlug}/memberships`} className="hover:text-amber-700 transition">VIP Memberships</Link>
           <Link href={`/${activeSlug}/reviews`} className="hover:text-amber-700 transition">Reviews</Link>
           <Link href={`/${activeSlug}/products`} className="hover:text-amber-700 transition">Products</Link>
           {user ? (

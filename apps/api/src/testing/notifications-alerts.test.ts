@@ -91,15 +91,17 @@ describe('Phase 7: Notification & Alerting Engine', () => {
       [shopA.id, workerIdA, serviceIdA]
     );
 
-    // Business hours & availability
-    await h.ownerPool.query(
-      `INSERT INTO shop_hours (shop_id, weekday, is_closed, open_time, close_time) VALUES ($1, 3, false, '09:00', '20:00')`,
-      [shopA.id]
-    );
-    await h.ownerPool.query(
-      `INSERT INTO worker_availability (shop_id, worker_id, weekday, is_working, start_time, end_time) VALUES ($1, $2, 3, true, '09:00', '19:00')`,
-      [shopA.id, workerIdA]
-    );
+    // Business hours & availability (all days of the week: ISO 1=Monday to 7=Sunday)
+    for (let day = 1; day <= 7; day++) {
+      await h.ownerPool.query(
+        `INSERT INTO shop_hours (shop_id, weekday, is_closed, open_time, close_time) VALUES ($1, $2, false, '09:00', '20:00')`,
+        [shopA.id, day]
+      );
+      await h.ownerPool.query(
+        `INSERT INTO worker_availability (shop_id, worker_id, weekday, is_working, start_time, end_time) VALUES ($1, $2, $3, true, '09:00', '19:00')`,
+        [shopA.id, workerIdA, day]
+      );
+    }
 
     // Product in Shop A
     const prodRow = (
@@ -242,11 +244,12 @@ let createdNotifId: string;
   });
 
   it('6. Booking an appointment automatically triggers notifications for staff and customer', async () => {
+    const futureBookingDate = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
     const bookRes = await h.call('POST', `/appointments/public/${shopA.slug}/book`, {
       body: {
         name: 'Karan Verma',
         phone: '+919988776655',
-        date: '2026-11-04',
+        date: futureBookingDate,
         startTime: '10:00',
         serviceIds: [serviceIdA],
         workerId: workerIdA,
@@ -270,11 +273,12 @@ let createdNotifId: string;
   });
 
   it('7. Updating appointment status to confirmed triggers appointment_confirmed notification', async () => {
+    const futureBookingDate = new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10);
     const bookRes = await h.call('POST', `/appointments/public/${shopA.slug}/book`, {
       body: {
         name: 'Karan Verma',
         phone: '+919988776655',
-        date: '2026-11-04',
+        date: futureBookingDate,
         startTime: '11:00',
         serviceIds: [serviceIdA],
         workerId: workerIdA,

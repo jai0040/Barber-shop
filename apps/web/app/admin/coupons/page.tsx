@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import { formatINR } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import {
   Ticket,
   Plus,
@@ -17,6 +18,7 @@ import {
   TrendingUp,
   X,
   Power,
+  Download,
 } from 'lucide-react';
 import { CouponItem } from '@barbershop/shared';
 
@@ -131,6 +133,39 @@ export default function CouponsPage() {
   const activeCount = coupons.filter((c) => c.isActive).length;
   const totalRedemptions = coupons.reduce((acc, c) => acc + (c.timesRedeemed || 0), 0);
 
+  function handleExportCsv() {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Coupon Code',
+      'Description',
+      'Discount Type',
+      'Discount Value',
+      'Max Discount (INR)',
+      'Min Order (INR)',
+      'Applicable To',
+      'Times Redeemed',
+      'Total Cap',
+      'Per-Customer Limit',
+      'Expiry Date',
+      'Status',
+    ];
+    const rows = coupons.map((c) => [
+      c.code,
+      c.description || '-',
+      c.discountType,
+      c.discountType === 'percentage' ? `${c.discountValue}%` : (c.discountValue / 100).toFixed(2),
+      c.maxDiscountPaise ? (c.maxDiscountPaise / 100).toFixed(2) : 'None',
+      (c.minOrderPaise / 100).toFixed(2),
+      c.applicableTo,
+      c.timesRedeemed || 0,
+      c.maxRedemptionsTotal ?? 'Unlimited',
+      c.maxRedemptionsPerCustomer ?? 1,
+      c.validUntil ? new Date(c.validUntil).toLocaleDateString() : 'No expiry',
+      c.isActive ? 'Active' : 'Inactive',
+    ]);
+    downloadCsv(`promotional_coupons_${dateStr}`, headers, rows);
+  }
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -145,12 +180,22 @@ export default function CouponsPage() {
             </p>
           </div>
 
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold shadow-lg shadow-amber-500/20 transition-all"
-          >
-            <Plus className="w-4 h-4" /> Create Coupon
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportCsv}
+              disabled={coupons.length === 0}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all disabled:opacity-50"
+              title="Export Coupons as CSV"
+            >
+              <Download className="w-4 h-4 text-amber-400" /> Export CSV
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold shadow-lg shadow-amber-500/20 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Create Coupon
+            </button>
+          </div>
         </div>
 
         {/* Alerts */}

@@ -19,7 +19,9 @@ import {
   ChevronRight,
   Search,
   RefreshCw,
+  Download,
 } from 'lucide-react';
+import { downloadCsv } from '@/lib/csv';
 
 interface AppointmentItem {
   id: string;
@@ -228,11 +230,54 @@ function AdminAppointmentsContent() {
     );
   });
 
+  function handleExportCsv() {
+    const rows = filteredAppointments.map((apt) => [
+      apt.id,
+      apt.date,
+      apt.startTime,
+      apt.endTime,
+      apt.customerName,
+      apt.customerPhone,
+      apt.workerName || 'Unassigned',
+      apt.isWalkIn ? 'Walk-In' : 'Online',
+      apt.status,
+      apt.services.map((s) => s.serviceName).join('; '),
+      (apt.totalAmountPaise / 100).toFixed(2),
+      apt.notes || '',
+    ]);
+
+    downloadCsv(
+      `appointments-${selectedDate || 'all'}.csv`,
+      [
+        'Appointment ID',
+        'Date',
+        'Start Time',
+        'End Time',
+        'Customer Name',
+        'Customer Phone',
+        'Barber Name',
+        'Type',
+        'Status',
+        'Services',
+        'Total Amount (₹)',
+        'Notes',
+      ],
+      rows
+    );
+  }
+
   return (
     <AdminLayout
       title="Appointment Management"
       actions={
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            className="px-3 py-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+            title="Export CSV"
+          >
+            <Download className="w-4 h-4 text-emerald-400" /> Export CSV
+          </button>
           <button
             onClick={loadAppointments}
             disabled={loading}

@@ -21,7 +21,9 @@ import {
   FileText,
   TrendingDown,
   Users,
+  Download,
 } from 'lucide-react';
+import { downloadCsv } from '@/lib/csv';
 import {
   AttendanceStatus,
   WorkerAttendanceItem,
@@ -246,11 +248,101 @@ export default function AdminAttendancePage() {
   const leaveHalfCount = todayRecords.filter((r) => r.status === 'half_day' || r.status === 'on_leave').length;
   const pendingAdvancesCount = advances.filter((a) => a.status === 'pending').length;
 
+  function handleExportCsv() {
+    if (activeTab === 'today') {
+      const rows = todayRecords.map((r) => [
+        r.attendanceDate,
+        r.workerName || workers.find((w) => w.id === r.workerId)?.displayName || 'Staff',
+        r.status,
+        r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString() : '',
+        r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString() : '',
+        r.notes || '',
+      ]);
+      downloadCsv(
+        `attendance-today-${todayDate}.csv`,
+        ['Date', 'Staff Member', 'Status', 'Check-In', 'Check-Out', 'Notes'],
+        rows
+      );
+    } else if (activeTab === 'history') {
+      const rows = historyRecords.map((r) => [
+        r.attendanceDate,
+        r.workerName || workers.find((w) => w.id === r.workerId)?.displayName || 'Staff',
+        r.status,
+        r.checkInAt ? new Date(r.checkInAt).toLocaleTimeString() : '',
+        r.checkOutAt ? new Date(r.checkOutAt).toLocaleTimeString() : '',
+        r.notes || '',
+      ]);
+      downloadCsv(
+        'attendance-history.csv',
+        ['Date', 'Staff Member', 'Status', 'Check-In', 'Check-Out', 'Notes'],
+        rows
+      );
+    } else if (activeTab === 'advances') {
+      const rows = advances.map((a) => [
+        a.workerName || workers.find((w) => w.id === a.workerId)?.displayName || 'Staff',
+        (a.amountPaise / 100).toFixed(2),
+        a.reason || '',
+        a.status,
+        a.requestedAt ? new Date(a.requestedAt).toLocaleDateString() : '',
+        a.approvedByName || '',
+      ]);
+      downloadCsv(
+        'salary-advances.csv',
+        ['Staff Member', 'Amount (₹)', 'Reason', 'Status', 'Requested At', 'Approved By'],
+        rows
+      );
+    } else if (activeTab === 'payroll') {
+      const rows = settlements.map((s) => [
+        s.workerName || workers.find((w) => w.id === s.workerId)?.displayName || 'Staff',
+        `${s.periodMonth}/${s.periodYear}`,
+        (s.baseSalaryPaise / 100).toFixed(2),
+        s.attendanceDaysPresent,
+        s.attendanceDaysHalf,
+        s.attendanceDaysAbsent,
+        (s.proRatedBasePaise / 100).toFixed(2),
+        (s.commissionEarnedPaise / 100).toFixed(2),
+        (s.tipEarnedPaise / 100).toFixed(2),
+        (s.bonusesPaise / 100).toFixed(2),
+        (s.advancesDeductedPaise / 100).toFixed(2),
+        (s.netPayablePaise / 100).toFixed(2),
+        s.payoutStatus,
+        s.paidAt ? new Date(s.paidAt).toLocaleDateString() : '',
+      ]);
+      downloadCsv(
+        `payroll-${selectedYear}-${String(selectedMonth).padStart(2, '0')}.csv`,
+        [
+          'Staff Member',
+          'Period (M/Y)',
+          'Base Salary (₹)',
+          'Present Days',
+          'Half Days',
+          'Absent Days',
+          'Pro-Rated Base (₹)',
+          'Commission (₹)',
+          'Tips (₹)',
+          'Bonus (₹)',
+          'Advances Deducted (₹)',
+          'Net Payable (₹)',
+          'Payout Status',
+          'Paid At',
+        ],
+        rows
+      );
+    }
+  }
+
   return (
     <AdminLayout
       title="Staff Attendance & Payroll"
       actions={
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            className="px-3 py-1.5 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+            title="Export CSV Report"
+          >
+            <Download className="w-4 h-4 text-emerald-400" /> Export CSV
+          </button>
           <button
             onClick={() => setShowRecordModal(true)}
             className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md active:scale-95"

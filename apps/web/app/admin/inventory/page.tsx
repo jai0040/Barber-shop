@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiRequest, formatINR } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import AdminLayout from '@/components/admin/AdminLayout';
 import {
   Package,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   TrendingDown,
   DollarSign,
+  Download,
 } from 'lucide-react';
 
 interface ProductItem {
@@ -232,11 +234,49 @@ export default function AdminInventoryPage() {
     return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
   });
 
+  function handleExportCsv() {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const headers = [
+      'Product Name',
+      'SKU',
+      'Category',
+      'Units in Stock',
+      'Selling Price (INR)',
+      'Cost Price (INR)',
+      'Total Valuation (INR)',
+      'Low Stock Threshold',
+      'Supplier',
+      'Status',
+    ];
+    const rows = products.map((p) => [
+      p.name,
+      p.sku,
+      p.categoryName || '-',
+      p.stockQuantity,
+      (p.sellingPricePaise / 100).toFixed(2),
+      (p.costPricePaise / 100).toFixed(2),
+      (((p.stockQuantity || 0) * (p.costPricePaise || 0)) / 100).toFixed(2),
+      p.lowStockThreshold,
+      p.supplierName || '-',
+      p.status,
+    ]);
+    downloadCsv(`inventory_catalog_${dateStr}`, headers, rows);
+  }
+
   return (
     <AdminLayout
       title="Products & Inventory Control"
       actions={
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCsv}
+            disabled={products.length === 0}
+            className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+            title="Export Inventory as CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            Export CSV
+          </button>
           <button
             onClick={loadProducts}
             disabled={loading}
