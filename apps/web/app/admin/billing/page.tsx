@@ -119,6 +119,13 @@ export default function AdminBillingPage() {
   const [statusInvoiceFilter, setStatusInvoiceFilter] = useState<'all' | 'paid' | 'void' | 'pending'>('all');
   const [viewingInvoice, setViewingInvoice] = useState<any | null>(null);
   const [voidingId, setVoidingId] = useState<string | null>(null);
+  const [shopInfo, setShopInfo] = useState<{
+    name: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    gstNo?: string;
+  } | null>(null);
 
   useEffect(() => {
     loadCatalog();
@@ -152,18 +159,20 @@ export default function AdminBillingPage() {
 
   async function loadCatalog() {
     try {
-      const [sRes, pRes, wRes, cRes, setRes] = await Promise.all([
+      const [sRes, pRes, wRes, cRes, setRes, shopRes] = await Promise.all([
         apiRequest<{ items: any[] }>('/services?limit=100').catch(() => ({ items: [] })),
         apiRequest<{ items: any[] }>('/products?activeOnly=true&limit=100').catch(() => ({ items: [] })),
         apiRequest<{ items: any[] }>('/workers?limit=100').catch(() => ({ items: [] })),
         apiRequest<{ items: any[] }>('/customers?limit=100').catch(() => ({ items: [] })),
         apiRequest<LoyaltySettings>('/loyalty/settings').catch(() => null),
+        apiRequest<any>('/shops/current').catch(() => null),
       ]);
       setServices(sRes.items || []);
       setProducts(pRes.items || []);
       setWorkers(wRes.items || []);
       setAllCustomers(cRes.items || []);
       if (setRes) setLoyaltySettings(setRes);
+      if (shopRes) setShopInfo(shopRes);
     } catch {
       // Catalogs load gracefully
     }
@@ -1650,6 +1659,112 @@ export default function AdminBillingPage() {
           </div>
         </div>
       )}
+
+      {/* POS Thermal & Paper Receipt Print Slip (80mm width) */}
+      {(viewingInvoice || successInvoice) && (() => {
+        const receipt = viewingInvoice || successInvoice;
+        return (
+          <div id="printable-receipt-portal" className="hidden print:block font-mono text-black bg-white">
+            <div className="text-center pb-2 border-b border-black border-dashed">
+              <h1 className="text-sm font-black uppercase tracking-wider">{shopInfo?.name || 'Classic Barber Shop'}</h1>
+              {shopInfo?.address && <p className="text-[10px]">{shopInfo.address}, {shopInfo.city || 'Bengaluru'}</p>}
+              {shopInfo?.phone && <p className="text-[10px]">Phone: {shopInfo.phone}</p>}
+              {shopInfo?.gstNo && <p className="text-[10px]">GSTIN: {shopInfo.gstNo}</p>}
+            </div>
+
+            <div className="py-2 border-b border-black border-dashed text-[10px] space-y-0.5">
+              <div className="flex justify-between font-bold">
+                <span>RECEIPT #{receipt.invoiceNumber}</span>
+                <span>{new Date(receipt.createdAt || Date.now()).toLocaleDateString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Time: {new Date(receipt.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span>Stylist: {receipt.workerName || 'Staff'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Client: {receipt.customerName || 'Walk-In'}</span>
+                {receipt.customerPhone && <span>{receipt.customerPhone}</span>}
+              </div>
+            </div>
+
+            {/* Line items */}
+            <div className="py-2 border-b border-black border-dashed">
+              <table className="w-full text-left text-[10px]">
+                <thead>
+                  <tr className="border-b border-black border-dotted font-bold">
+                    <th className="pb-1">ITEM</th>
+                    <th className="pb-1 text-center">QTY</th>
+                    <th className="pb-1 text-right">PRICE</th>
+                    <th className="pb-1 text-right">TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dotted divide-gray-300">
+                  {(receipt.items || []).map((it: any, idx: number) => (
+                    <tr key={idx}>
+                      <td className="py-1 font-semibold">{it.itemName}</td>
+                      <td className="py-1 text-center font-mono">{it.quantity}</td>
+                      <td className="py-1 text-right font-mono">{formatINR(it.unitPricePaise)}</td>
+                      <td className="py-1 text-right font-mono font-bold">
+                        {formatINR(it.totalPaise ?? it.unitPricePaise * it.quantity)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Price Breakdown */}
+            <div className="py-2 border-b border-black border-dashed text-[10px] space-y-0.5">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span className="font-mono">{formatINR(receipt.subtotalPaise || receipt.totalPaise)}</span>
+              </div>
+              {receipt.discountPaise > 0 && (
+                <div className="flex justify-between">
+                  <span>VIP / Loyalty Discount:</span>
+                  <span className="font-mono">- {formatINR(receipt.discountPaise)}</span>
+                </div>
+              )}
+              {receipt.couponDiscountPaise > 0 && (
+                <div className="flex justify-between">
+                  <span>Coupon Discount:</span>
+                  <span className="font-mono">- {formatINR(receipt.couponDiscountPaise)}</span>
+                </div>
+              )}
+              {receipt.tipPaise > 0 && (
+                <div className="flex justify-between">
+                  <span>Staff Tip:</span>
+                  <span className="font-mono">+ {formatINR(receipt.tipPaise)}</span>
+                </div>
+              )}
+              <div className="pt-1 mt-1 border-t border-black border-dotted flex justify-between font-bold text-xs">
+                <span>GRAND TOTAL:</span>
+                <span className="font-mono font-black">{formatINR(receipt.finalTotalPaise ?? receipt.totalPaise)}</span>
+              </div>
+            </div>
+
+            {/* Payment Record */}
+            <div className="py-2 border-b border-black border-dashed text-[10px] space-y-0.5">
+              <div className="flex justify-between font-semibold">
+                <span>Payment Status:</span>
+                <span className="uppercase">{receipt.paymentStatus || 'PAID'}</span>
+              </div>
+              {receipt.payments?.length > 0 && (
+                <div className="flex justify-between">
+                  <span>Method:</span>
+                  <span className="uppercase font-bold">{receipt.payments.map((p: any) => p.method).join(', ')}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Thermal Footer */}
+            <div className="pt-3 text-center text-[10px] space-y-0.5">
+              <p className="font-bold tracking-wider">*** THANK YOU FOR VISITING! ***</p>
+              <p>Please visit us again soon</p>
+            </div>
+          </div>
+        );
+      })()}
     </AdminLayout>
   );
 }
