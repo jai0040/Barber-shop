@@ -112,8 +112,17 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Tracks user actor, action type, entity, timestamp, IP address, and precise old-versus-new JSON diffs.
   - Comprehensive admin portal (`/admin/audit`) with action badges, entity filtering, pagination, expandable diff viewer, and CSV report export.
 
+- **Progressive Web App (PWA) & Mobile Installation (Phase 9)**:
+  - Next.js 14 Web Manifest (`/manifest.webmanifest`) configured with `display: 'standalone'`, theme color `#d97706`, and dark navy background `#020617`.
+  - Amber/gold gradient vector icon (`/icon.svg`) serving as high-resolution favicon and mobile home screen launcher badge.
+  - iOS-native standalone meta tags (`appleWebApp: { capable: true, statusBarStyle: 'black-translucent' }`).
+
+- **SEO Directives & Crawling Metadata (Phase 9)**:
+  - Dynamic `robots.txt` (`/robots.txt`) granting full crawling access to public shop catalogs, services, and booking flows while protecting private portals (`/admin/`, `/worker/`, `/auth/`, `/my-account/`).
+  - Dynamic XML Sitemap (`/sitemap.xml`) indexing all public customer booking and discovery pages.
+
 - **Automated Backup & Recovery Engine (Section 72)**:
-  - Production CLI utility (`npm run backup`) backing up all 41 tenant and system PostgreSQL tables into timestamped JSON snapshots.
+  - Production CLI utility (`npm run backup`) backing up all 43 tenant and system PostgreSQL tables into timestamped JSON snapshots in strict foreign-key dependency order.
   - Atomic database restoration utility (`npm run restore <file>`) with transaction rollback protection.
 
 - **Worker & Barber Station**:
@@ -283,6 +292,16 @@ Builds:
 - `@barbershop/shared`: TypeScript types, validation schemas, and constants.
 - `@barbershop/api`: NestJS API compiled to JavaScript (`apps/api/dist`).
 - `@barbershop/web`: Next.js 14 App Router production bundle (`apps/web/.next`).
+
+### Production Docker Orchestration
+To deploy the full container stack (PostgreSQL 16 + NestJS API + Next.js Standalone web frontend) with automated container healthcheck supervision:
+```bash
+npm run docker:prod
+```
+Or manually via Docker Compose:
+```bash
+docker compose -f docker-compose.prod.yml up --build -d
+```
 
 ---
 
