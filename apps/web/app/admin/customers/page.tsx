@@ -17,6 +17,10 @@ import {
   RefreshCw,
   FileText,
   Download,
+  History,
+  Clock,
+  DollarSign,
+  Award,
 } from 'lucide-react';
 
 interface CustomerItem {
@@ -41,7 +45,29 @@ export default function AdminCustomersPage() {
 
   // Modals
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerItem | null>(null);
+  const [customerHistory, setCustomerHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      loadCustomerHistory(selectedCustomer.id);
+    } else {
+      setCustomerHistory([]);
+    }
+  }, [selectedCustomer]);
+
+  async function loadCustomerHistory(customerId: string) {
+    try {
+      setLoadingHistory(true);
+      const res = await apiRequest<{ items: any[] }>(`/appointments?customerId=${customerId}&limit=20`);
+      setCustomerHistory(res.items || []);
+    } catch {
+      setCustomerHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
 
   // New Customer Form
   const [newName, setNewName] = useState('');
@@ -350,13 +376,13 @@ export default function AdminCustomersPage() {
         </div>
       )}
 
-      {/* MODAL 2: View Customer Profile Details */}
+      {/* MODAL 2: View Customer Profile & Complete Service History (Sections 11 & 20) */}
       {selectedCustomer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Users className="w-5 h-5 text-amber-400" /> Customer Details
+                <Users className="w-5 h-5 text-amber-400" /> Customer Profile & History
               </h3>
               <button
                 onClick={() => setSelectedCustomer(null)}
@@ -367,34 +393,153 @@ export default function AdminCustomersPage() {
             </div>
 
             <div className="mt-4 space-y-4 text-xs">
-              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                <p className="text-sm font-bold text-white">{selectedCustomer.name}</p>
-                <p className="text-slate-400 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-amber-400" /> {selectedCustomer.phone}
-                </p>
-                {selectedCustomer.email && (
-                  <p className="text-slate-400 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-amber-400" /> {selectedCustomer.email}
+              {/* Profile Header Card */}
+              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-base font-black text-white">{selectedCustomer.name}</p>
+                    {selectedCustomer.hasAccount ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        App Account
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700/60">
+                        Walk-In
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-slate-400 mt-1">
+                    <span className="flex items-center gap-1 font-mono">
+                      <Phone className="w-3.5 h-3.5 text-amber-400" /> {selectedCustomer.phone}
+                    </span>
+                    {selectedCustomer.email && (
+                      <span className="flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5 text-amber-400" /> {selectedCustomer.email}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick Summary Badges */}
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Visits</span>
+                    <span className="text-sm font-black text-white">{customerHistory.length}</span>
+                  </div>
+                  <div className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Spend</span>
+                    <span className="text-sm font-black text-emerald-400">
+                      {formatINR(
+                        customerHistory.reduce(
+                          (sum, a) => sum + (a.status === 'completed' ? a.totalAmountPaise : 0),
+                          0
+                        )
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preferences & Notes Grid (Section 21) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="block uppercase font-bold text-[10px] text-slate-400 mb-1">
+                    Preferred Barber:
+                  </span>
+                  <p className="text-amber-300 font-bold flex items-center gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5" />
+                    {selectedCustomer.preferredWorkerName || 'No specific barber preference'}
                   </p>
+                </div>
+
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="block uppercase font-bold text-[10px] text-slate-400 mb-1">
+                    Styling Notes & Hair Preferences:
+                  </span>
+                  <p className="text-slate-300 italic">
+                    {selectedCustomer.notes || 'No customer styling notes added.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Service & Visit History (Section 20) */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-amber-400" /> Visit & Service History (Rule 20)
+                  </h4>
+                  <span className="text-[11px] text-slate-500 font-mono">
+                    {customerHistory.length} records
+                  </span>
+                </div>
+
+                {loadingHistory ? (
+                  <div className="p-8 text-center text-slate-500 text-xs bg-slate-950 rounded-2xl border border-slate-800">
+                    <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                    Loading visit history...
+                  </div>
+                ) : customerHistory.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-xs bg-slate-950 rounded-2xl border border-slate-800">
+                    <Calendar className="w-6 h-6 text-slate-700 mx-auto mb-2" />
+                    No previous appointments or service visits recorded for this client.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {customerHistory.map((apt: any) => {
+                      const serviceText = Array.isArray(apt.services)
+                        ? apt.services.map((s: any) => s.serviceName).join(' + ')
+                        : typeof apt.services === 'string'
+                        ? apt.services
+                        : 'Service';
+
+                      return (
+                        <div
+                          key={apt.id}
+                          className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3 hover:border-slate-700 transition-colors"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="font-mono text-slate-200 font-bold">{apt.date}</span>
+                              <span className="text-[10px] text-slate-500">
+                                ({apt.startTime} - {apt.endTime})
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                                  apt.status === 'completed'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : apt.status === 'in_service'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : apt.status === 'cancelled'
+                                    ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                    : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                }`}
+                              >
+                                {apt.status.replace('_', ' ')}
+                              </span>
+                            </div>
+
+                            <p className="text-white font-medium text-xs">
+                              {serviceText}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              Barber: <strong className="text-slate-300">{apt.workerName || 'Unassigned'}</strong>
+                              {apt.notes && ` • Note: ${apt.notes}`}
+                            </p>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-black text-amber-300 block">
+                              {formatINR(apt.totalAmountPaise)}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              {apt.isWalkIn ? 'Walk-in' : 'Online'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
-              </div>
-
-              <div>
-                <span className="block uppercase font-bold text-slate-400 mb-1">
-                  Styling Notes & Preferences:
-                </span>
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-slate-200">
-                  {selectedCustomer.notes || 'No customer styling notes added.'}
-                </div>
-              </div>
-
-              <div>
-                <span className="block uppercase font-bold text-slate-400 mb-1">
-                  Preferred Barber:
-                </span>
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-amber-300 font-semibold">
-                  {selectedCustomer.preferredWorkerName || 'No specific preference assigned.'}
-                </div>
               </div>
             </div>
           </div>
