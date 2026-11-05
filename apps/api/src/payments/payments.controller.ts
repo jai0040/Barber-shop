@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   Patch,
@@ -36,6 +37,12 @@ export class PaymentsController {
     @Body(new ZodValidationPipe(verifyRazorpayPaymentSchema)) dto: any
   ) {
     return this.svc.verifyPayment(ctx, dto);
+  }
+
+  @RequirePermission('settings.manage')
+  @Get('credentials')
+  getCredentials(@Auth() ctx: AuthContext) {
+    return this.svc.getCredentialsStatus(ctx);
   }
 
   @RequirePermission('settings.manage')

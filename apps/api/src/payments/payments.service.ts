@@ -146,6 +146,19 @@ export class PaymentGatewayService {
     });
   }
 
+  async getCredentialsStatus(ctx: AuthContext) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const shop = (
+        await c.query(`SELECT razorpay_key_id FROM shops WHERE id = $1`, [ctx.shopId])
+      ).rows[0];
+      const keyId = shop?.razorpay_key_id;
+      return {
+        configured: !!keyId,
+        keyIdMasked: keyId ? `${keyId.slice(0, 8)}••••••••` : null,
+      };
+    });
+  }
+
   async handleWebhook(body: any, signature?: string) {
     // Webhook handler for external gateway callbacks
     const event = body?.event;
