@@ -8,6 +8,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
 
 - **Customer Appointment Management**:
   - Mobile-first responsive customer booking flow (`/[slug]/book`).
+  - Deep-link query parameter preselection support for services and preferred barbers (`/[slug]/book?serviceId=...&workerId=...`).
   - Multi-service selection with cumulative duration & price calculation.
   - Preferred barber selection or **"Any Available Barber"** automated slot matching.
   - 15-minute slot generator adhering to shop hours, worker shifts, lunch/tea breaks, time-offs, and existing bookings.
@@ -16,6 +17,12 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Append-only status audit log with timestamps and notes.
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
   - Walk-in support with admin barber assignment.
+
+- **Services Catalog & Stylist Matrix (Sections 7, 8 & 71)**:
+  - Custom category management hub (create, rename, and safe deletion of empty categories).
+  - Service price (in integer paise), duration (in minutes), description, and active/archived lifecycle controls (`/admin/services`).
+  - Direct Stylist-to-Service capability assignment modal (`PUT /services/:id/workers`) with *Select All* and *Clear All* controls.
+  - 1-click UTF-8 BOM CSV catalog export.
 
 - **Customer Loyalty Points Program (Phase 2)**:
   - Configurable shop earn rates (`earn_per_rupee_paise`) and point redemption values (`point_value_paise`).
@@ -79,15 +86,21 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Integrated 3-way checkout selector on the POS terminal (`/admin/billing`): Cash (with change calculator), UPI QR, and Online Payment Gateway.
 
 - **CSV Data Export Engine (Sections 36 & 67)**:
-  - 1-click client-side CSV report export across all administrative data tables.
+  - 1-click client-side CSV report export across all 13 administrative data tables.
   - UTF-8 BOM encoding ensures proper spreadsheet formatting across Excel, Google Sheets, and LibreOffice without mojibake.
   - Export capabilities on Reports & Analytics (`/admin/reports`): Sales & Category Breakdown, Stylist Productivity, Inventory Asset Valuation, and Finance summaries.
   - Export capabilities on Finance & Payroll (`/admin/finance`): Operational Expense Ledger and Staff Commission / Payout Ledgers.
+  - Export capabilities on Point of Sale & Invoices (`/admin/billing`): Completed invoice history ledger with customer, stylist, items, discounts, tips, totals, and payment status.
   - Export capabilities on Customer Profiles (`/admin/customers`): Complete customer directory, visit history, and notes.
   - Export capabilities on Promotional Coupons (`/admin/coupons`): Promo code directory, discount rules, caps, redemptions, and expiry.
   - Export capabilities on Inventory (`/admin/inventory`): Product catalog, SKU, stock quantities, valuations, and low-stock thresholds.
   - Export capabilities on Staff Attendance & Payroll (`/admin/attendance`): Today's attendance board, historical logs, salary advances, and monthly payroll sheets.
   - Export capabilities on Appointments (`/admin/appointments`): Daily and filtered appointments with times, customer contacts, assigned barbers, services, and amounts.
+  - Export capabilities on Services Catalog (`/admin/services`): Full service catalog with categories, durations, prices, and assigned stylists count.
+  - Export capabilities on Staff & Barbers (`/admin/workers`): Barber directory, contact numbers, commission rates, base salaries, and skills count.
+  - Export capabilities on Customer Reviews (`/admin/reviews`): Verified testimonials, ratings, and owner responses.
+  - Export capabilities on Memberships & Loyalty (`/admin/memberships`): VIP membership plans, discount rules, points multipliers, and active subscriber rosters.
+  - Export capabilities on Security & Activity Audit Trail (`/admin/audit`): Security and operational event logs with actor, action, entity, and timestamp.
 
 - **Multi-Location & Branch Switcher (Section 85)**:
   - Multi-branch extensible architecture enabling unified owner management across multiple shop locations.
@@ -117,6 +130,9 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Discount calculator (flat discounts, VIP membership discounts, and loyalty points).
   - Cash payment calculator with automatic change return display.
   - High-contrast UPI QR modal (`upi://pay?...`) for fast scanning.
+  - Completed Invoices History ledger with search, status filters (`paid`, `void`), and 1-click UTF-8 BOM CSV export.
+  - Interactive Invoice Details Inspector modal with full line item breakdown (services vs retail products, quantities, prices, discounts, tips).
+  - 1-click Invoice Voiding workflow (`POST /billing/invoices/:id/void`) that atomically restores inventory product stock, reverses customer loyalty points, and deducts earned staff commissions.
   - Printable / downloadable invoice summaries.
 
 - **Products & Inventory**:
