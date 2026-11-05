@@ -56,6 +56,16 @@ export default function AdminFinancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Section 35: Period Filter State (Today, Weekly, Monthly, Custom)
+  const [periodPreset, setPeriodPreset] = useState<'today' | 'week' | 'month' | 'custom'>('month');
+  const [filterStartDate, setFilterStartDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [filterEndDate, setFilterEndDate] = useState<string>(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
+
   // Phase 3: Staff Commissions State
   const [commissions, setCommissions] = useState<WorkerEarningsSummary[]>([]);
   const [commissionsLoading, setCommissionsLoading] = useState(false);
@@ -84,21 +94,54 @@ export default function AdminFinancePage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    loadFinanceData();
+    loadFinanceData(filterStartDate, filterEndDate);
     loadCommissions();
   }, []);
 
-  async function loadFinanceData() {
+  function handleSelectPeriod(preset: 'today' | 'week' | 'month') {
+    setPeriodPreset(preset);
+    const today = new Date().toISOString().slice(0, 10);
+    let s = today;
+    if (preset === 'today') {
+      s = today;
+    } else if (preset === 'week') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      s = d.toISOString().slice(0, 10);
+    } else if (preset === 'month') {
+      const d = new Date();
+      s = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    setFilterStartDate(s);
+    setFilterEndDate(today);
+    loadFinanceData(s, today);
+  }
+
+  async function loadFinanceData(sDate = filterStartDate, eDate = filterEndDate) {
     try {
       setLoading(true);
       setError(null);
+
+      let sumUrl = '/finance/summary';
+      let expUrl = '/finance/expenses?limit=100';
+      if (sDate && eDate) {
+        sumUrl += `?startDate=${sDate}&endDate=${eDate}`;
+        expUrl += `&startDate=${sDate}&endDate=${eDate}`;
+      }
+
       const [sumRes, expRes, catRes] = await Promise.all([
-        apiRequest<FinanceSummary>('/finance/summary'),
-        apiRequest<{ items: any[] }>('/finance/expenses?limit=100'),
+        apiRequest<any>(sumUrl),
+        apiRequest<{ items: any[] }>(expUrl),
         apiRequest<{ categories: any[] }>('/finance/categories'),
       ]);
 
-      setSummary(sumRes);
+      setSummary({
+        revenuePaise: Number(sumRes.totalRevenuePaise ?? sumRes.revenuePaise ?? 0),
+        serviceRevenuePaise: Number(sumRes.serviceRevenuePaise ?? 0),
+        productRevenuePaise: Number(sumRes.productRevenuePaise ?? 0),
+        expensesPaise: Number(sumRes.totalExpensesPaise ?? sumRes.expensesPaise ?? 0),
+        netPaise: Number(sumRes.netResultPaise ?? sumRes.netPaise ?? 0),
+      });
       setExpenses(
         (expRes.items || []).map((e: any) => ({
           id: e.id,
@@ -376,6 +419,85 @@ export default function AdminFinancePage() {
     >
       {activeTab === 'expenses' ? (
         <>
+          {/* Period Filter Bar (Section 35: Today, Weekly, Monthly, Custom) */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              <button
+                onClick={() => handleSelectPeriod('today')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  periodPreset === 'today'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
+                }`}
+              >
+                Today
+              </button>
+              <button
+                onClick={() => handleSelectPeriod('week')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  periodPreset === 'week'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
+                }`}
+              >
+                This Week
+              </button>
+              <button
+                onClick={() => handleSelectPeriod('month')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  periodPreset === 'month'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
+                }`}
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => setPeriodPreset('custom')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  periodPreset === 'custom'
+                    ? 'bg-amber-500 text-slate-950 shadow-md'
+                    : 'text-slate-400 hover:text-white bg-slate-950 border border-slate-800'
+                }`}
+              >
+                Custom Range
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold uppercase">From:</span>
+                <input
+                  type="date"
+                  value={filterStartDate}
+                  onChange={(e) => {
+                    setFilterStartDate(e.target.value);
+                    setPeriodPreset('custom');
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold uppercase">To:</span>
+                <input
+                  type="date"
+                  value={filterEndDate}
+                  onChange={(e) => {
+                    setFilterEndDate(e.target.value);
+                    setPeriodPreset('custom');
+                  }}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <button
+                onClick={() => loadFinanceData(filterStartDate, filterEndDate)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
           {/* KPI Cards */}
           {summary && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
