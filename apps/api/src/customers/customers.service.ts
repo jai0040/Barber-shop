@@ -280,6 +280,107 @@ export class CustomersService {
     });
   }
 
+  async cancelMyAppointment(
+    ctx: AuthContext,
+    shopId: string,
+    customerId: string,
+    appointmentId: string,
+    reason?: string
+  ) {
+    return this.db.tenant({ shopId }, async (c) => {
+      const shop = (await c.query('SELECT id, name, phone, settings FROM shops WHERE id = $1', [shopId])).rows[0];
+      if (!shop) throw nf('Shop');
+
+      const apt = (
+        await c.query(
+          `SELECT a.*, c.name as customer_name, c.phone as customer_phone, w.display_name as worker_name, w.user_id as worker_user_id
+           FROM appointments a
+           LEFT JOIN customers c ON c.id = a.customer_id
+           LEFT JOIN workers w ON w.id = a.worker_id
+           WHERE a.id = $1 AND a.shop_id = $2 FOR UPDATE`,
+          [appointmentId, shopId]
+        )
+      ).rows[0];
+
+      if (!apt) throw nf('Appointment');
+      if (apt.customer_id !== customerId) {
+        throw forbid('You can only cancel your own appointments.');
+      }
+
+      if (apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'in_service') {
+        throw bad(`Cannot cancel an appointment that is already ${apt.status}.`);
+      }
+
+      const cooldownHours = shop.settings?.cancellation_cooldown_hours ?? 24;
+      const startTimeMs = new Date(apt.start_at).getTime();
+      const nowMs = Date.now();
+      const diffHours = (startTimeMs - nowMs) / (1000 * 60 * 60);
+
+      if (cooldownHours > 0 && diffHours < cooldownHours) {
+        throw bad(
+          `Appointments can only be cancelled at least ${cooldownHours} hour(s) before the scheduled time. Please contact ${shop.name}${shop.phone ? ` at ${shop.phone}` : ''} directly.`
+        );
+      }
+
+      const cancelReason = (reason?.trim() || 'Cancelled by customer online').slice(0, 300);
+
+      await c.query(
+        `UPDATE appointments 
+         SET status = 'cancelled', 
+             cancelled_at = now(), 
+             cancelled_by = $1, 
+             cancelled_by_customer = true, 
+             cancel_reason = $2,
+             updated_at = now()
+         WHERE id = $3 AND shop_id = $4`,
+        [ctx.userId, cancelReason, appointmentId, shopId]
+      );
+
+      await c.query(
+        `INSERT INTO appointment_status_history (shop_id, appointment_id, from_status, to_status, status, notes, changed_by)
+         VALUES ($1, $2, $3, 'cancelled', 'cancelled', $4, $5)`,
+        [shopId, appointmentId, apt.status, cancelReason, ctx.userId]
+      );
+
+      // In-app alert for staff / worker
+      await c.query(
+        `INSERT INTO notifications (shop_id, user_id, customer_id, title, message, type, channel, status, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'appointment_cancelled', 'in_app', 'unread', $6)`,
+        [
+          shopId,
+          apt.worker_user_id || null,
+          customerId,
+          `Appointment #${apt.appointment_number} Cancelled`,
+          `Customer ${apt.customer_name} cancelled appointment #${apt.appointment_number} scheduled for ${apt.date ? String(apt.date).slice(0, 10) : ''} at ${apt.start_time ? String(apt.start_time).slice(0, 5) : ''}. Reason: ${cancelReason}`,
+          JSON.stringify({
+            appointmentId,
+            appointmentNumber: apt.appointment_number,
+            customerName: apt.customer_name,
+            customerPhone: apt.customer_phone,
+            cancelReason,
+          }),
+        ]
+      );
+
+      await this.audit.log(c, {
+        shopId,
+        userId: ctx.userId,
+        action: 'appointment.customer_cancel',
+        entity: 'appointment',
+        entityId: appointmentId,
+        oldValues: { status: apt.status },
+        newValues: { status: 'cancelled', cancelReason, cancelledByCustomer: true },
+        ip: ctx.ip,
+      });
+
+      return {
+        id: appointmentId,
+        status: 'cancelled',
+        message: 'Appointment cancelled successfully.',
+      };
+    });
+  }
+
   // ----- helpers -----
   private async assertWorker(c: PoolClient, id: string) {
     if (!(await c.query(`SELECT 1 FROM workers WHERE id=$1 AND archived_at IS NULL AND status='active'`, [id])).rowCount) throw bad('That barber is not available.');

@@ -6,6 +6,8 @@ import { slugParam } from '../shops/shops.schemas';
 import { CustomersService } from './customers.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MembershipsService } from '../memberships/memberships.service';
+import { ErrorCodes } from '@barbershop/shared';
+import { AppException } from '../common/app-exception';
 import { createCustomerSchema, listCustomersSchema, selfUpdateSchema, updateCustomerSchema } from './customers.schemas';
 
 const ID = () => Param('id', ParseUUIDPipe);
@@ -63,5 +65,19 @@ export class MyCustomerController {
     const custId = await this.svc.myCustomerId(ctx, shopId);
     if (!custId) return [];
     return this.svc.myAppointments(shopId, custId);
+  }
+
+  @Post('appointments/:id/cancel')
+  @HttpCode(200)
+  async cancelMyAppointment(
+    @Auth() ctx: AuthContext,
+    @Param('slug', new ZodValidationPipe(slugParam)) slug: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto?: { reason?: string }
+  ) {
+    const shopId = await this.svc.shopBySlug(slug);
+    const custId = await this.svc.myCustomerId(ctx, shopId);
+    if (!custId) throw new AppException(403, ErrorCodes.FORBIDDEN, 'Customer profile required to cancel appointments.');
+    return this.svc.cancelMyAppointment(ctx, shopId, custId, id, dto?.reason);
   }
 }

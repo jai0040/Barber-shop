@@ -66,6 +66,9 @@ export default function MyAccountPage() {
   const [barberRating, setBarberRating] = useState<number>(5);
   const [reviewComment, setReviewComment] = useState<string>('');
   const [submittingReview, setSubmittingReview] = useState<boolean>(false);
+  const [cancelModalAppt, setCancelModalAppt] = useState<CustomerAppointment | null>(null);
+  const [cancelReason, setCancelReason] = useState<string>('');
+  const [cancellingAppt, setCancellingAppt] = useState<boolean>(false);
   const [joinStatus, setJoinStatus] = useState<'linked' | 'pending' | 'not_joined' | 'loading'>('loading');
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -192,6 +195,28 @@ export default function MyAccountPage() {
       setError(err.message || 'Failed to update preferences.');
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  async function handleCancelAppointment() {
+    if (!cancelModalAppt) return;
+    try {
+      setCancellingAppt(true);
+      setError(null);
+      await apiRequest(`/me/shops/${slug}/appointments/${cancelModalAppt.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      setSuccessMsg(`Appointment #${cancelModalAppt.appointmentNumber} has been cancelled.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+      setCancelModalAppt(null);
+      setCancelReason('');
+      await loadAppointments();
+    } catch (err: any) {
+      setError(err.message || 'Failed to cancel appointment. Please contact the shop directly.');
+      setCancelModalAppt(null);
+    } finally {
+      setCancellingAppt(false);
     }
   }
 
@@ -527,6 +552,7 @@ export default function MyAccountPage() {
               <div className="space-y-3">
                 {appointments.map((appt) => {
                   const isCompleted = appt.status === 'completed';
+                  const isCancellable = appt.status === 'booked' || appt.status === 'confirmed';
                   return (
                     <div
                       key={appt.id}
@@ -589,6 +615,19 @@ export default function MyAccountPage() {
                       </div>
 
                       <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                        {isCancellable && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelModalAppt(appt);
+                              setCancelReason('');
+                            }}
+                            className="w-full sm:w-auto px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                            title="Cancel this appointment"
+                          >
+                            <X className="w-3.5 h-3.5" /> Cancel
+                          </button>
+                        )}
                         {isCompleted && !appt.review && (
                           <button
                             type="button"
@@ -753,6 +792,67 @@ export default function MyAccountPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Appointment Confirmation Modal */}
+      {cancelModalAppt && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button
+              onClick={() => setCancelModalAppt(null)}
+              disabled={cancellingAppt}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800/50 hover:bg-slate-800 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mb-4">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-lg font-bold text-white mb-1">
+              Cancel Appointment #{cancelModalAppt.appointmentNumber}?
+            </h3>
+            <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+              Are you sure you want to cancel your visit scheduled for{' '}
+              <span className="text-slate-200 font-semibold">{cancelModalAppt.date}</span> at{' '}
+              <span className="text-slate-200 font-semibold">{cancelModalAppt.startTime || 'scheduled time'}</span>?
+              Your booked slot will be released back to the barber's calendar.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                Reason for Cancellation (Optional)
+              </label>
+              <textarea
+                rows={3}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="e.g. Schedule conflict, feeling unwell, rescheduled directly..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setCancelModalAppt(null)}
+                disabled={cancellingAppt}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+              >
+                Keep Appointment
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelAppointment}
+                disabled={cancellingAppt}
+                className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition disabled:opacity-50"
+              >
+                {cancellingAppt ? 'Cancelling...' : 'Confirm Cancellation'}
+              </button>
+            </div>
           </div>
         </div>
       )}
