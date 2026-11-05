@@ -21,6 +21,8 @@ import {
   CreditCard,
   Key,
   Copy,
+  Download,
+  Database,
 } from 'lucide-react';
 
 const WEEKDAYS = [
@@ -82,6 +84,10 @@ export default function AdminSettingsPage() {
   const [razorpayConfigured, setRazorpayConfigured] = useState(false);
   const [savingGateway, setSavingGateway] = useState(false);
 
+  // Backup & Archival State
+  const [shopSlug, setShopSlug] = useState('');
+  const [exportingBackup, setExportingBackup] = useState(false);
+
   const logoInputRef = useRef<HTMLInputElement>(null);
   const qrInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +120,7 @@ export default function AdminSettingsPage() {
       }
 
       setName(shopData.name || '');
+      setShopSlug(shopData.slug || '');
       setPhone(shopData.phone || '');
       setEmail(shopData.email || '');
       setAddress(shopData.address || '');
@@ -247,6 +254,26 @@ export default function AdminSettingsPage() {
       notify(err.message || 'Failed to update payment gateway credentials.', 'error');
     } finally {
       setSavingGateway(false);
+    }
+  }
+
+  async function handleDownloadBackup() {
+    try {
+      setExportingBackup(true);
+      const res = await apiRequest<{ data: any }>('/shops/current/backup');
+      const backupData = (res as any)?.data || res;
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup-${shopSlug || 'shop'}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify('Shop backup snapshot downloaded successfully!');
+    } catch (err: any) {
+      notify(err.message || 'Failed to export backup.', 'error');
+    } finally {
+      setExportingBackup(false);
     }
   }
 
@@ -883,6 +910,59 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Database Backup & Disaster Recovery */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white flex items-center gap-2">
+                    Shop Database Backup & Offline Archival
+                    <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                      RLS Isolated
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Export an encrypted, tenant-isolated snapshot of your entire shop data (appointments, clients, sales, commissions, inventory) for off-site disaster recovery and archival.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="space-y-1 text-xs text-slate-400">
+                <div className="flex items-center gap-2 text-slate-300 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Full 35-Table Tenant Snapshot</span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Includes customer profiles, appointments, queue logs, POS invoices, inventory movements, commissions, and staff attendance strictly bounded to your shop.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadBackup}
+                disabled={exportingBackup}
+                className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs flex items-center gap-2 shadow-md active:scale-95 transition-all self-start md:self-auto cursor-pointer disabled:opacity-50"
+              >
+                {exportingBackup ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Exporting Snapshot...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Download Shop Backup (.json)
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

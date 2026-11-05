@@ -34,6 +34,12 @@ export class ShopsController {
   @StaffOnly() @Get() current(@Auth() ctx: AuthContext) { return this.svc.current(ctx); }
   @StaffOnly() @Get('setup') setup(@Auth() ctx: AuthContext) { return this.svc.setup(ctx); }
 
+  @RequirePermission('settings.manage')
+  @Get('backup')
+  backup(@Auth() ctx: AuthContext) {
+    return this.svc.exportShopBackup(ctx);
+  }
+
   @RequirePermission('settings.manage') @Patch()
   update(@Auth() ctx: AuthContext, @Body(new ZodValidationPipe(updateShopSchema)) dto: any) { return this.svc.update(ctx, dto); }
 

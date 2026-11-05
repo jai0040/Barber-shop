@@ -84,6 +84,89 @@ export class ShopsService {
     });
   }
 
+  async exportShopBackup(ctx: AuthContext) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const shop = (await c.query('SELECT * FROM shops WHERE id = $1', [ctx.shopId])).rows[0];
+      if (!shop) throw notFound();
+
+      const tenantTables = [
+        'shop_hours',
+        'service_categories',
+        'services',
+        'workers',
+        'worker_services',
+        'worker_schedules',
+        'worker_time_off',
+        'product_categories',
+        'products',
+        'inventory_transactions',
+        'customers',
+        'customer_preferred_services',
+        'appointments',
+        'appointment_services',
+        'appointment_status_history',
+        'invoices',
+        'invoice_items',
+        'payments',
+        'expense_categories',
+        'expenses',
+        'loyalty_settings',
+        'customer_loyalty_ledger',
+        'membership_plans',
+        'customer_memberships',
+        'customer_membership_service_usages',
+        'worker_commission_ledger',
+        'worker_payouts',
+        'coupons',
+        'coupon_redemptions',
+        'worker_attendance',
+        'worker_salary_advances',
+        'worker_salary_settlements',
+        'reviews',
+        'notifications',
+        'audit_logs',
+      ];
+
+      const tablesData: Record<string, any[]> = {
+        shops: [shop],
+      };
+      const counts: Record<string, number> = {
+        shops: 1,
+      };
+
+      for (const tbl of tenantTables) {
+        try {
+          const res = await c.query(`SELECT * FROM ${tbl} WHERE shop_id = $1`, [ctx.shopId]);
+          tablesData[tbl] = res.rows;
+          counts[tbl] = res.rowCount || 0;
+        } catch {
+          tablesData[tbl] = [];
+          counts[tbl] = 0;
+        }
+      }
+
+      await this.audit.log(c, {
+        shopId: ctx.shopId,
+        userId: ctx.userId,
+        action: 'shop.backup.export',
+        entity: 'shop',
+        entityId: ctx.shopId!,
+        newValues: { tableCounts: counts },
+        ip: ctx.ip,
+      });
+
+      return {
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+        shopId: ctx.shopId,
+        shopSlug: shop.slug,
+        shopName: shop.name,
+        counts,
+        tables: tablesData,
+      };
+    });
+  }
+
   // ---------- images (logo / UPI QR) ----------
   private target(ctx: AuthContext, kind: 'shop_logo' | 'upi_qr') {
     return { kind, table: 'shops' as const, rowId: ctx.shopId!, entity: 'shop',

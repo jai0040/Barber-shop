@@ -260,6 +260,25 @@ async function runSmokeTests() {
     })
   );
 
+  record(
+    await testStep('Payment Gateway Credentials (GET /payments/credentials)', async () => {
+      const creds = await fetchJson(`${API_BASE}/payments/credentials`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      return `Configured: ${creds.configured ? 'Yes' : 'No'} (${creds.keyIdMasked || 'Default Sandbox'})`;
+    })
+  );
+
+  record(
+    await testStep('Shop Database Backup Snapshot (GET /shops/current/backup)', async () => {
+      const backup = await fetchJson(`${API_BASE}/shops/current/backup`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      const tableCount = Object.keys(backup.tables || {}).length;
+      return `Snapshot: "${backup.shopName}" (${tableCount} tables exported)`;
+    })
+  );
+
   // --------------------------------------------------------------------------
   // 5. Next.js Web Frontend & PWA Metadata Routes
   // --------------------------------------------------------------------------
@@ -273,6 +292,8 @@ async function runSmokeTests() {
     ['Customer Reviews Showcase (GET /classic-barber/reviews)', `${WEB_BASE}/classic-barber/reviews`],
     ['Barber Station Login Portal (GET /worker)', `${WEB_BASE}/worker`],
     ['Admin Dashboard Portal (GET /admin/dashboard)', `${WEB_BASE}/admin/dashboard`],
+    ['Admin POS Billing Portal (GET /admin/billing)', `${WEB_BASE}/admin/billing`],
+    ['Admin Settings Portal (GET /admin/settings)', `${WEB_BASE}/admin/settings`],
     ['PWA Web App Manifest (GET /manifest.webmanifest)', `${WEB_BASE}/manifest.webmanifest`],
     ['App Launcher SVG Icon (GET /icon.svg)', `${WEB_BASE}/icon.svg`],
     ['Robots Directives (GET /robots.txt)', `${WEB_BASE}/robots.txt`],
