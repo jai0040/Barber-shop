@@ -124,6 +124,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
 - **Automated Backup & Recovery Engine (Section 72)**:
   - Production CLI utility (`npm run backup`) backing up all 43 tenant and system PostgreSQL tables into timestamped JSON snapshots in strict foreign-key dependency order.
   - Atomic database restoration utility (`npm run restore <file>`) with transaction rollback protection.
+  - **1-Click Shop Backup & Offline Archival**: Admin self-service database snapshot exporter (`/admin/settings` -> `GET /api/v1/shops/current/backup`) delivering a downloadable JSON archive containing all 35 tenant-isolated database tables with row counts and cryptographic audit tracking.
 
 - **Worker & Barber Station**:
   - Dedicated mobile-friendly worker queue (`/worker`).
@@ -139,6 +140,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Discount calculator (flat discounts, VIP membership discounts, and loyalty points).
   - Cash payment calculator with automatic change return display.
   - High-contrast UPI QR modal (`upi://pay?...`) for fast scanning.
+  - **POS 80mm Thermal Receipt Printing Engine**: Native `@media print` layout formatting receipts for 80mm roll printers while hiding all application chrome; includes GSTIN, itemized breakdown, discounts, tips, payment method, and cashier sign-off.
   - Completed Invoices History ledger with search, status filters (`paid`, `void`), and 1-click UTF-8 BOM CSV export.
   - Interactive Invoice Details Inspector modal with full line item breakdown (services vs retail products, quantities, prices, discounts, tips).
   - 1-click Invoice Voiding workflow (`POST /billing/invoices/:id/void`) that atomically restores inventory product stock, reverses customer loyalty points, and deducts earned staff commissions.
@@ -256,8 +258,8 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (28 Probes)
-Verify full system health, live database readiness, worker queues, owner reports, and Next.js static metadata routes against running instances:
+### End-to-End System Smoke Probe (32 Probes)
+Verify full system health, live database readiness, worker queues, owner reports, payment credentials, backup export, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
 ```
