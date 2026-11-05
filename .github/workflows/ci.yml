@@ -37,7 +37,7 @@ jobs:
   # 2. Automated Test Suite Execution
   # ----------------------------------------------------
   test:
-    name: Backend Test Suites (237 Tests)
+    name: Automated Test Suites (315 Tests)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
