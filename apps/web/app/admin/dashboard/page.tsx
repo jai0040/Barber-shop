@@ -21,39 +21,49 @@ import {
   Package,
 } from 'lucide-react';
 
-interface DashboardData {
-  kpis: {
-    revenuePaise: number;
-    expensesPaise: number;
-    netPaise: number;
-    totalAppointments: number;
+interface NormalizedDashboardData {
+  metrics: {
+    todayRevenuePaise: number;
+    serviceRevenuePaise: number;
+    productRevenuePaise: number;
+    todayExpensesPaise: number;
+    netResultPaise: number;
+    todayAppointments: number;
     completedAppointments: number;
-    inServiceAppointments: number;
-    bookedAppointments: number;
+    pendingAppointments: number;
+    todayCustomers: number;
     lowStockCount: number;
   };
-  todayAppointments: Array<{
+  lowStockItems: Array<{
     id: string;
+    name: string;
+    sku: string;
+    stockQuantity: number;
+    lowStockThreshold: number;
+  }>;
+  appointments: Array<{
+    id: string;
+    appointmentNumber?: number;
     customerName: string;
     customerPhone: string;
-    workerId: string | null;
-    workerName: string | null;
+    workerName: string;
     startTime: string;
     endTime: string;
     status: string;
     totalAmountPaise: number;
-    services: Array<{ serviceName: string; unitPricePaise: number }>;
+    services: string | Array<{ serviceName: string; unitPricePaise: number }>;
   }>;
   workerPerformance: Array<{
     workerId: string;
-    workerName: string;
-    appointmentsCount: number;
+    displayName: string;
+    todayCustomers: number;
+    completedCount: number;
     revenuePaise: number;
   }>;
 }
 
 export default function AdminDashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [data, setData] = useState<NormalizedDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -62,8 +72,58 @@ export default function AdminDashboardPage() {
     try {
       setLoading(true);
       setError(null);
-      const res = await apiRequest<DashboardData>('/reports/dashboard/admin');
-      setData(res);
+      const res = await apiRequest<any>('/reports/dashboard/admin');
+
+      // Normalize backend response to handle both API formats safely
+      const rawMetrics = res.metrics || res.kpis || {};
+      const normalizedMetrics = {
+        todayRevenuePaise: Number(rawMetrics.todayRevenuePaise ?? rawMetrics.revenuePaise ?? 0),
+        serviceRevenuePaise: Number(rawMetrics.serviceRevenuePaise ?? 0),
+        productRevenuePaise: Number(rawMetrics.productRevenuePaise ?? 0),
+        todayExpensesPaise: Number(rawMetrics.todayExpensesPaise ?? rawMetrics.expensesPaise ?? 0),
+        netResultPaise: Number(rawMetrics.netResultPaise ?? rawMetrics.netPaise ?? 0),
+        todayAppointments: Number(rawMetrics.todayAppointments ?? rawMetrics.totalAppointments ?? 0),
+        completedAppointments: Number(rawMetrics.completedAppointments ?? 0),
+        pendingAppointments: Number(rawMetrics.pendingAppointments ?? rawMetrics.inServiceAppointments ?? 0),
+        todayCustomers: Number(rawMetrics.todayCustomers ?? 0),
+        lowStockCount: Number(rawMetrics.lowStockCount ?? 0),
+      };
+
+      const normalizedAppointments = (res.appointments || res.todayAppointments || []).map((a: any) => ({
+        id: a.id,
+        appointmentNumber: a.appointmentNumber,
+        customerName: a.customerName || 'Guest',
+        customerPhone: a.customerPhone || '',
+        workerName: a.workerName || 'Unassigned',
+        startTime: a.startTime || '00:00',
+        endTime: a.endTime || '00:00',
+        status: a.status || 'booked',
+        totalAmountPaise: Number(a.totalAmountPaise || 0),
+        services: a.services || a.serviceNames || 'Custom Service',
+      }));
+
+      const normalizedWorkers = (res.workerPerformance || []).map((w: any) => ({
+        workerId: w.workerId || w.id,
+        displayName: w.displayName || w.workerName || 'Barber',
+        todayCustomers: Number(w.todayCustomers ?? 0),
+        completedCount: Number(w.completedCount ?? w.appointmentsCount ?? 0),
+        revenuePaise: Number(w.revenuePaise ?? 0),
+      }));
+
+      const normalizedLowStock = (res.lowStockItems || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        stockQuantity: Number(p.stockQuantity ?? p.stock_quantity ?? 0),
+        lowStockThreshold: Number(p.lowStockThreshold ?? p.low_stock_threshold ?? 0),
+      }));
+
+      setData({
+        metrics: normalizedMetrics,
+        lowStockItems: normalizedLowStock,
+        appointments: normalizedAppointments,
+        workerPerformance: normalizedWorkers,
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard metrics.');
     } finally {
@@ -105,7 +165,7 @@ export default function AdminDashboardPage() {
           </button>
           <Link
             href="/admin/appointments?action=walkin"
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 shadow-md"
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
           >
             <Plus className="w-4 h-4" /> New Walk-In
           </Link>
@@ -129,27 +189,41 @@ export default function AdminDashboardPage() {
         </div>
       ) : data ? (
         <div className="space-y-6">
-          {/* Low Stock Warning Banner */}
-          {data.kpis.lowStockCount > 0 && (
-            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-amber-300">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                <span className="text-xs sm:text-sm font-semibold">
-                  Attention: {data.kpis.lowStockCount} product(s) have reached or fallen below low-stock threshold!
-                </span>
+          {/* Low Stock Warning Banner (Section 25) */}
+          {data.metrics.lowStockCount > 0 && (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-300 shadow-md">
+              <div className="flex items-start sm:items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+                <div>
+                  <p className="text-xs sm:text-sm font-bold text-amber-300">
+                    Low Stock Alert: {data.metrics.lowStockCount} product(s) below reorder threshold
+                  </p>
+                  {data.lowStockItems.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-1.5">
+                      {data.lowStockItems.slice(0, 4).map((p) => (
+                        <span
+                          key={p.id}
+                          className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-200 border border-amber-500/30 font-medium"
+                        >
+                          {p.name}: <strong className="text-white">{p.stockQuantity} left</strong> (threshold: {p.lowStockThreshold})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <Link
                 href="/admin/inventory"
-                className="text-xs font-bold text-amber-400 hover:underline inline-flex items-center gap-1 shrink-0 ml-2"
+                className="text-xs font-bold text-amber-400 hover:underline inline-flex items-center gap-1 shrink-0"
               >
-                Reorder Stock <ChevronRight className="w-3.5 h-3.5" />
+                Manage Inventory <ChevronRight className="w-3.5 h-3.5" />
               </Link>
             </div>
           )}
 
           {/* KPI Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Revenue */}
+            {/* Revenue with Service vs Product Breakdown (Section 29) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
@@ -161,13 +235,17 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-black text-emerald-400">
-                  {formatINR(data.kpis.revenuePaise)}
+                  {formatINR(data.metrics.todayRevenuePaise)}
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">Paid services & products</p>
+                <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-1">
+                  <span>Services: <strong className="text-slate-200">{formatINR(data.metrics.serviceRevenuePaise)}</strong></span>
+                  <span>&bull;</span>
+                  <span>Retail: <strong className="text-slate-200">{formatINR(data.metrics.productRevenuePaise)}</strong></span>
+                </div>
               </div>
             </div>
 
-            {/* Expenses */}
+            {/* Expenses (Section 30) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
@@ -179,13 +257,13 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-black text-rose-400">
-                  {formatINR(data.kpis.expensesPaise)}
+                  {formatINR(data.metrics.todayExpensesPaise)}
                 </p>
-                <p className="text-[11px] text-slate-500 mt-1">Operating costs & stock-in</p>
+                <p className="text-[11px] text-slate-500 mt-1">Operational costs & purchases</p>
               </div>
             </div>
 
-            {/* Net Result */}
+            {/* Net Result (Section 31) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
@@ -198,20 +276,20 @@ export default function AdminDashboardPage() {
               <div>
                 <p
                   className={`text-2xl font-black ${
-                    data.kpis.netPaise >= 0 ? 'text-amber-400' : 'text-rose-400'
+                    data.metrics.netResultPaise >= 0 ? 'text-amber-400' : 'text-rose-400'
                   }`}
                 >
-                  {formatINR(data.kpis.netPaise)}
+                  {formatINR(data.metrics.netResultPaise)}
                 </p>
                 <p className="text-[11px] text-slate-500 mt-1">Revenue minus expenses</p>
               </div>
             </div>
 
-            {/* Appointments */}
+            {/* Appointments Overview (Section 37) */}
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-                  Today's Clients
+                  Today's Bookings
                 </span>
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center">
                   <Users className="w-4 h-4" />
@@ -219,12 +297,12 @@ export default function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-black text-white">
-                  {data.kpis.totalAppointments}
+                  {data.metrics.todayAppointments}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  <span className="text-emerald-400 font-bold">{data.kpis.completedAppointments} Done</span> &bull;{' '}
-                  <span className="text-amber-400 font-bold">{data.kpis.inServiceAppointments} In Chair</span> &bull;{' '}
-                  <span className="text-slate-400">{data.kpis.bookedAppointments} Upcoming</span>
+                  <span className="text-emerald-400 font-bold">{data.metrics.completedAppointments} Done</span> &bull;{' '}
+                  <span className="text-amber-400 font-bold">{data.metrics.pendingAppointments} Active</span> &bull;{' '}
+                  <span className="text-slate-300">{data.metrics.todayCustomers} Client(s)</span>
                 </p>
               </div>
             </div>
@@ -250,15 +328,22 @@ export default function AdminDashboardPage() {
                 </Link>
               </div>
 
-              {data.todayAppointments.length === 0 ? (
+              {data.appointments.length === 0 ? (
                 <div className="text-center py-12 text-slate-500 text-xs">
                   <Calendar className="w-8 h-8 mx-auto mb-2 text-slate-700" />
                   No appointments scheduled for today yet.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {data.todayAppointments.slice(0, 6).map((apt) => {
+                  {data.appointments.slice(0, 6).map((apt) => {
                     const isBusy = updatingId === apt.id;
+                    const serviceDisplay =
+                      typeof apt.services === 'string'
+                        ? apt.services
+                        : Array.isArray(apt.services)
+                        ? apt.services.map((s: any) => s.serviceName).join(', ')
+                        : 'Custom';
+
                     return (
                       <div
                         key={apt.id}
@@ -272,22 +357,23 @@ export default function AdminDashboardPage() {
                             <span className="font-bold text-sm text-white">
                               {apt.customerName}
                             </span>
-                            <span className="text-xs text-slate-400">
-                              ({apt.customerPhone})
-                            </span>
+                            {apt.customerPhone && (
+                              <span className="text-xs text-slate-400">
+                                ({apt.customerPhone})
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                             <span>
                               Barber:{' '}
                               <strong className="text-slate-200">
-                                {apt.workerName || 'Unassigned'}
+                                {apt.workerName}
                               </strong>
                             </span>
                             <span>&bull;</span>
                             <span>
-                              Services:{' '}
-                              {apt.services.map((s) => s.serviceName).join(', ') || 'Custom'}
+                              Services: <strong className="text-slate-300">{serviceDisplay}</strong>
                             </span>
                             <span>&bull;</span>
                             <span className="text-amber-300 font-semibold">
@@ -299,14 +385,14 @@ export default function AdminDashboardPage() {
                         {/* Status Progression Controls */}
                         <div className="flex items-center gap-2 shrink-0">
                           <span
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold capitalize ${
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                               apt.status === 'completed'
                                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 : apt.status === 'in_service'
-                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                                 : apt.status === 'checked_in'
                                 ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                : 'bg-slate-800 text-slate-400 border border-slate-700/60'
+                                : 'bg-slate-800 text-slate-300 border border-slate-700'
                             }`}
                           >
                             {apt.status.replace('_', ' ')}
@@ -347,7 +433,7 @@ export default function AdminDashboardPage() {
               )}
             </div>
 
-            {/* Worker Performance Snapshot (1 Col) */}
+            {/* Worker Performance Snapshot (Section 32) (1 Col) */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -376,12 +462,12 @@ export default function AdminDashboardPage() {
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-black flex items-center justify-center">
-                            {wp.workerName.slice(0, 2).toUpperCase()}
+                            {wp.displayName.slice(0, 2).toUpperCase()}
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-white">{wp.workerName}</p>
+                            <p className="text-xs font-bold text-white">{wp.displayName}</p>
                             <p className="text-[10px] text-slate-400">
-                              {wp.appointmentsCount} service(s) done
+                              {wp.completedCount} done &bull; {wp.todayCustomers} client(s)
                             </p>
                           </div>
                         </div>
