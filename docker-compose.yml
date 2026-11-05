@@ -40,6 +40,12 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       PLATFORM_ADMIN_EMAIL: ${PLATFORM_ADMIN_EMAIL:-admin@barbershop.com}
       PLATFORM_ADMIN_PASSWORD: ${PLATFORM_ADMIN_PASSWORD:-AdminSecurePass#2026}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/api/v1/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     ports:
       - "4000:4000"
     restart: unless-stopped
