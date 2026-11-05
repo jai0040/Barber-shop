@@ -159,14 +159,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Staff Portals link footer */}
-      <footer className="max-w-4xl mx-auto px-4 pt-10 pb-4 text-center text-xs text-slate-400 space-y-2 border-t border-slate-200 mt-10">
-        <div className="flex items-center justify-center gap-4 text-slate-600 font-medium">
-          <Link href="/admin/dashboard" className="hover:text-amber-700">Shop Admin Panel</Link>
+      {/* Staff & Customer Portals link footer */}
+      <footer className="max-w-4xl mx-auto px-4 pt-10 pb-4 text-center text-xs text-slate-400 space-y-3 border-t border-slate-200 mt-10">
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 text-slate-600 font-medium">
+          <Link href="/classic-barber/services" className="hover:text-amber-700">Services Menu</Link>
           <span>•</span>
-          <Link href="/worker" className="hover:text-amber-700">Barber Portal</Link>
+          <Link href="/classic-barber/barbers" className="hover:text-amber-700">Our Barbers</Link>
+          <span>•</span>
+          <Link href="/classic-barber/memberships" className="hover:text-amber-700">VIP Memberships</Link>
+          <span>•</span>
+          <Link href="/classic-barber/reviews" className="hover:text-amber-700">Reviews & Ratings</Link>
           <span>•</span>
           <Link href="/classic-barber/products" className="hover:text-amber-700">In-Shop Products</Link>
+        </div>
+        <div className="flex items-center justify-center gap-4 text-[11px] text-slate-500 font-medium">
+          <Link href="/admin/dashboard" className="hover:text-amber-700">Shop Admin Panel</Link>
+          <span>•</span>
+          <Link href="/worker" className="hover:text-amber-700">Barber Station</Link>
+          <span>•</span>
+          <Link href="/my-account" className="hover:text-amber-700">Customer Account</Link>
         </div>
         <p>© 2026 Classic Barber Shop. Powered by Barber Shop Management Software.</p>
       </footer>
