@@ -94,6 +94,11 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Interactive Branch Location switcher dropdown in `AdminLayout` header and sidebar.
   - Instant location context switching between flagship and branch stores (e.g., Indiranagar Flagship vs. Koramangala Branch).
 
+- **Security & Activity Audit Trail (Section 41)**:
+  - Append-only audit logging of all sensitive administrative and operational activities (`audit_logs` table with PostgreSQL RLS).
+  - Tracks user actor, action type, entity, timestamp, IP address, and precise old-versus-new JSON diffs.
+  - Comprehensive admin portal (`/admin/audit`) with action badges, entity filtering, pagination, expandable diff viewer, and CSV report export.
+
 - **Automated Backup & Recovery Engine (Section 72)**:
   - Production CLI utility (`npm run backup`) backing up all 41 tenant and system PostgreSQL tables into timestamped JSON snapshots.
   - Atomic database restoration utility (`npm run restore <file>`) with transaction rollback protection.
@@ -215,6 +220,7 @@ Starts the Next.js 14 App Router on **`http://localhost:3000`**.
 - `http://localhost:3000/admin/services` — Service catalog management (categories, prices, durations).
 - `http://localhost:3000/admin/workers` — Worker profiles, credentials, service mappings, and schedules.
 - `http://localhost:3000/admin/settings` — Shop business hours, logo upload, and cancellation cooldown settings.
+- `http://localhost:3000/admin/audit` — Append-only security audit trail, old/new value diff viewer, and CSV report export.
 
 ---
 

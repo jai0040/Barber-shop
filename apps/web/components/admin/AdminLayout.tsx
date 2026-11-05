@@ -75,6 +75,7 @@ export default function AdminLayout({ children, title, actions }: AdminLayoutPro
     { label: 'Offers & Coupons', href: '/admin/coupons', icon: Ticket },
     { label: 'Reviews & Ratings', href: '/admin/reviews', icon: Star },
     { label: 'Shop Settings', href: '/admin/settings', icon: Settings },
+    { label: 'Audit Trail', href: '/admin/audit', icon: ShieldCheck },
   ];
 
   if (!session) {
