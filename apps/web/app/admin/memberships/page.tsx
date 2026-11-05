@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import {
   Award,
   Crown,
@@ -19,6 +20,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Search,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 import { MembershipPlan, CustomerMembership, LoyaltySettings, CustomerLoyaltySummary } from '@barbershop/shared';
 
@@ -198,19 +201,55 @@ export default function MembershipsAndLoyaltyPage() {
     }
   }
 
+  function handleExportPlansCsv() {
+    downloadCsv(
+      `membership-plans-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Plan Name', 'Duration (Days)', 'Price (INR)', 'Service Discount %', 'Product Discount %', 'Points Multiplier', 'Status'],
+      plans.map((p) => [
+        p.name,
+        p.durationDays,
+        (p.pricePaise / 100).toFixed(2),
+        p.discountPercentServices,
+        p.discountPercentProducts,
+        p.pointsMultiplier,
+        p.status,
+      ])
+    );
+  }
+
   return (
     <AdminLayout
       title="Memberships & Customer Loyalty"
       actions={
-        activeTab === 'plans' ? (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCreatePlanModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold px-4 py-2 rounded-xl shadow-lg transition-all"
+            onClick={loadData}
+            disabled={loading}
+            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition"
+            title="Refresh Data"
           >
-            <Plus className="w-4 h-4" />
-            <span>Create Plan</span>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-        ) : null
+
+          <button
+            onClick={handleExportPlansCsv}
+            disabled={plans.length === 0}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-semibold text-xs inline-flex items-center gap-1.5 transition disabled:opacity-50"
+            title="Export Plans CSV"
+          >
+            <Download className="w-4 h-4 text-amber-500" /> Export CSV
+          </button>
+
+          {activeTab === 'plans' && (
+            <button
+              onClick={() => setShowCreatePlanModal(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold px-4 py-2 rounded-xl shadow-lg transition-all text-xs"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Plan</span>
+            </button>
+          )}
+        </div>
       }
     >
       {/* Alert Banners */}

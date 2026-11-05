@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import AdminLayout from '@/components/admin/AdminLayout';
 import { apiRequest } from '@/lib/api';
+import { downloadCsv } from '@/lib/csv';
 import {
   Star,
   MessageSquare,
@@ -20,6 +21,7 @@ import {
   X,
   Reply,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 import { ReviewItem, ReviewStatus, ReviewSummary } from '@barbershop/shared';
 
@@ -101,6 +103,24 @@ export default function AdminReviewsPage() {
     }
   }
 
+  function handleExportCsv() {
+    downloadCsv(
+      `customer-reviews-${new Date().toISOString().slice(0, 10)}.csv`,
+      ['Review ID', 'Date', 'Customer Name', 'Barber Name', 'Overall Rating', 'Barber Rating', 'Status', 'Customer Comment', 'Owner Reply'],
+      reviews.map((r) => [
+        r.id,
+        new Date(r.createdAt).toLocaleDateString(),
+        r.customerName || 'Anonymous Client',
+        r.workerName || 'Shop Stylist',
+        r.rating,
+        r.barberRating || '',
+        r.status,
+        r.comment || '',
+        r.ownerReply || '',
+      ])
+    );
+  }
+
   const fiveStarCount = summary?.ratingDistribution?.[5] || 0;
   const totalReviewsCount = summary?.totalReviews || 0;
   const satisfactionRate = totalReviewsCount > 0 ? Math.round((fiveStarCount / totalReviewsCount) * 100) : 100;
@@ -110,14 +130,24 @@ export default function AdminReviewsPage() {
     <AdminLayout
       title="Customer Reviews & Ratings"
       actions={
-        <button
-          onClick={loadReviews}
-          disabled={loading}
-          className="p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white"
-          title="Refresh"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadReviews}
+            disabled={loading}
+            className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white transition"
+            title="Refresh Reviews"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={handleExportCsv}
+            disabled={reviews.length === 0}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-semibold text-xs inline-flex items-center gap-1.5 transition disabled:opacity-50"
+            title="Export Reviews CSV"
+          >
+            <Download className="w-4 h-4 text-amber-500" /> Export CSV
+          </button>
+        </div>
       }
     >
       <div className="space-y-6">
