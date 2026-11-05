@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { ROLE_TEMPLATES } from '@barbershop/shared';
 import { loadConfig } from './config';
 import { hashPassword } from './auth/auth.service';
 
@@ -14,6 +15,7 @@ async function seed() {
   const pool = new Pool({ connectionString: cfg.MIGRATION_DATABASE_URL });
 
   try {
+    await pool.query("SET client_encoding = 'UTF8'");
     console.log('Seeding realistic demo data for "Classic Barber Shop"...');
 
     // 1. Create or get "Classic Barber Shop"
@@ -58,19 +60,33 @@ async function seed() {
       }
     }
 
-    // 2. Roles
-    const roles = (await pool.query(`SELECT id, system_key FROM roles WHERE shop_id = $1`, [shopId])).rows;
-    let ownerRoleId = roles.find((r) => r.system_key === 'owner')?.id;
-    let workerRoleId = roles.find((r) => r.system_key === 'worker')?.id;
+    // 2. Roles & Permissions (populated from standard ROLE_TEMPLATES)
+    for (const sid of [shopId, branch2?.id].filter(Boolean)) {
+      for (const t of ROLE_TEMPLATES) {
+        let roleRec = (await pool.query(`SELECT id FROM roles WHERE shop_id = $1 AND system_key = $2`, [sid, t.systemKey])).rows[0];
+        if (!roleRec) {
+          roleRec = (await pool.query(
+            `INSERT INTO roles (shop_id, name, is_system, system_key) VALUES ($1, $2, true, $3) RETURNING id`,
+            [sid, t.name, t.systemKey]
+          )).rows[0];
+        }
+        const keys = Object.keys(t.permissions);
+        if (keys.length) {
+          await pool.query(
+            `INSERT INTO role_permissions (role_id, shop_id, permission_id, scope)
+             SELECT $1, $2, p.id, x.scope
+               FROM unnest($3::text[], $4::text[]) AS x(key, scope)
+               JOIN permissions p ON p.key = x.key
+             ON CONFLICT (role_id, permission_id) DO UPDATE SET scope = EXCLUDED.scope`,
+            [roleRec.id, sid, keys, keys.map((k) => t.permissions[k])]
+          );
+        }
+      }
+    }
 
-    if (!ownerRoleId) {
-      const r = (await pool.query(`INSERT INTO roles (shop_id, name, is_system, system_key) VALUES ($1, 'Owner', true, 'owner') RETURNING id`, [shopId])).rows[0];
-      ownerRoleId = r.id;
-    }
-    if (!workerRoleId) {
-      const r = (await pool.query(`INSERT INTO roles (shop_id, name, is_system, system_key) VALUES ($1, 'Worker', true, 'worker') RETURNING id`, [shopId])).rows[0];
-      workerRoleId = r.id;
-    }
+    const roles = (await pool.query(`SELECT id, system_key FROM roles WHERE shop_id = $1`, [shopId])).rows;
+    const ownerRoleId = roles.find((r) => r.system_key === 'owner')!.id;
+    const workerRoleId = roles.find((r) => r.system_key === 'worker')!.id;
 
     // 3. Shop Owner User
     const ownerEmail = 'owner@classicbarber.com';
@@ -571,7 +587,7 @@ async function seed() {
          ($1, 'New Appointment #1', 'New booking #1 from Jayant Patel for today at 10:30 with Rahul (Haircut).', 'appointment_booked', 'in_app', 'unread', NULL, NOW() - INTERVAL '15 minutes'),
          ($1, 'Low Stock Alert: Organic Tea Tree Shampoo', 'Product \"Organic Tea Tree Shampoo\" has only 3 units remaining (alert threshold: 5). Please reorder stock.', 'low_stock', 'in_app', 'unread', NULL, NOW() - INTERVAL '45 minutes'),
          ($1, 'Payment Receipt #INV-1001', 'Classic Barber Shop: Receipt for invoice #INV-1001. Paid Rs 600.00 via UPI. Thank you for your business!', 'payment_received', 'whatsapp', 'unread', 'https://wa.me/919876543212?text=Classic%20Barber%20Shop%3A%20Receipt%20for%20invoice%20%23INV-1001.%20Paid%20Rs%20600.00%20via%20UPI.%20Thank%20you%20for%20your%20business!', NOW() - INTERVAL '2 hours'),
-         ($1, 'New 5★ Review', 'New 5-star review received from Suresh Raina for barber Raj: \"The Hair Spa by Raj was unbelievably relaxing!\"', 'review_received', 'in_app', 'read', NULL, NOW() - INTERVAL '3 hours')`,
+         ($1, 'New 5-Star Review', 'New 5-star review received from Suresh Raina for barber Raj: \"The Hair Spa by Raj was unbelievably relaxing!\"', 'review_received', 'in_app', 'read', NULL, NOW() - INTERVAL '3 hours')`,
         [shopId]
       );
     }

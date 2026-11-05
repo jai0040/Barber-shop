@@ -9,6 +9,7 @@
     "dev:web": "npm run dev -w @barbershop/web",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "smoke-test": "node scripts/smoke-test.mjs",
     "backup": "npm run backup -w @barbershop/api",
     "restore": "npm run restore -w @barbershop/api",
     "docker:up": "docker compose up --build -d",
