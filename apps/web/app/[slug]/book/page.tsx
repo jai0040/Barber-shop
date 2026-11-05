@@ -56,11 +56,16 @@ function BookingWizardContent() {
   const [error, setError] = useState<string | null>(null);
   const [confirmedAppointment, setConfirmedAppointment] = useState<AppointmentItem | null>(null);
 
-  // Prefill preselected service if passed in query param
+  // Prefill preselected service or worker if passed in query param
   useEffect(() => {
-    const preselected = searchParams.get('serviceId');
-    if (preselected) {
-      setSelectedServiceIds([preselected]);
+    const preselectedService = searchParams.get('serviceId');
+    if (preselectedService) {
+      setSelectedServiceIds([preselectedService]);
+    }
+
+    const preselectedWorker = searchParams.get('workerId');
+    if (preselectedWorker) {
+      setSelectedWorkerId(preselectedWorker);
     }
 
     const session = getSession();
