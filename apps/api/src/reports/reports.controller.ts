@@ -29,4 +29,10 @@ export class ReportsController {
   ) {
     return this.svc.getReports(ctx, { type, startDate, endDate });
   }
+
+  @RequirePermission('reports.view')
+  @Get('eod')
+  endOfDayReconciliation(@Auth() ctx: AuthContext, @Query('date') date?: string) {
+    return this.svc.getEndOfDayReconciliation(ctx, date);
+  }
 }

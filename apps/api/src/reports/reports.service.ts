@@ -277,4 +277,197 @@ export class ReportsService {
       };
     });
   }
+
+  // ==================== END-OF-DAY (EOD) RECONCILIATION ====================
+
+  async getEndOfDayReconciliation(ctx: AuthContext, dateStr?: string) {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const shop = (await c.query('SELECT id, name, slug, phone, gst_no, timezone FROM shops WHERE id = $1', [ctx.shopId])).rows[0];
+      const targetDate = dateStr || new Date().toISOString().slice(0, 10);
+
+      // 1. Invoices & Revenue breakdown
+      const invSummary = (await c.query(
+        `SELECT
+           count(*)::int AS total_invoices,
+           COALESCE(sum(subtotal_paise), 0)::bigint AS gross_subtotal_paise,
+           COALESCE(sum(discount_paise), 0)::bigint AS total_discounts_paise,
+           COALESCE(sum(tip_paise), 0)::bigint AS total_tips_paise,
+           COALESCE(sum(final_total_paise), 0)::bigint AS net_revenue_paise
+         FROM invoices
+         WHERE shop_id = $1
+           AND payment_status = 'paid'
+           AND created_at >= $2::date AND created_at < ($2::date + interval '1 day')`,
+        [ctx.shopId, targetDate]
+      )).rows[0];
+
+      // 2. Services vs Products revenue breakdown
+      const itemBreakdown = (await c.query(
+        `SELECT
+           ii.type,
+           COALESCE(sum(ii.total_paise), 0)::bigint AS total_paise,
+           count(*)::int AS count
+         FROM invoice_items ii
+         JOIN invoices inv ON inv.id = ii.invoice_id
+         WHERE inv.shop_id = $1
+           AND inv.payment_status = 'paid'
+           AND inv.created_at >= $2::date AND inv.created_at < ($2::date + interval '1 day')
+         GROUP BY ii.type`,
+        [ctx.shopId, targetDate]
+      )).rows;
+
+      let serviceRevenuePaise = 0;
+      let productRevenuePaise = 0;
+      for (const item of itemBreakdown) {
+        if (item.type === 'service') serviceRevenuePaise = Number(item.total_paise);
+        if (item.type === 'product') productRevenuePaise = Number(item.total_paise);
+      }
+
+      // 3. Payment Methods Breakdown (Drawer reconciliation)
+      const payMethods = (await c.query(
+        `SELECT
+           p.method,
+           count(*)::int AS transaction_count,
+           COALESCE(sum(p.amount_paise), 0)::bigint AS total_paise
+         FROM payments p
+         JOIN invoices inv ON inv.id = p.invoice_id
+         WHERE p.shop_id = $1
+           AND p.status = 'completed'
+           AND inv.payment_status = 'paid'
+           AND p.created_at >= $2::date AND p.created_at < ($2::date + interval '1 day')
+         GROUP BY p.method`,
+        [ctx.shopId, targetDate]
+      )).rows;
+
+      let cashTotalPaise = 0;
+      let upiTotalPaise = 0;
+      let onlineTotalPaise = 0;
+      let cashTransactionsCount = 0;
+      let upiTransactionsCount = 0;
+      let onlineTransactionsCount = 0;
+
+      for (const pm of payMethods) {
+        const amt = Number(pm.total_paise);
+        const cnt = Number(pm.transaction_count);
+        if (pm.method === 'cash') {
+          cashTotalPaise += amt;
+          cashTransactionsCount += cnt;
+        } else if (pm.method === 'upi_qr') {
+          upiTotalPaise += amt;
+          upiTransactionsCount += cnt;
+        } else {
+          onlineTotalPaise += amt;
+          onlineTransactionsCount += cnt;
+        }
+      }
+
+      // 4. Appointment Status Counts
+      const apptCounts = (await c.query(
+        `SELECT
+           count(*)::int AS total_appointments,
+           count(*) FILTER (WHERE status = 'completed')::int AS completed_count,
+           count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled_count,
+           count(*) FILTER (WHERE status = 'no_show')::int AS no_show_count,
+           count(*) FILTER (WHERE is_walk_in = true)::int AS walk_in_count,
+           count(*) FILTER (WHERE is_walk_in = false)::int AS online_booking_count
+         FROM appointments
+         WHERE shop_id = $1 AND date = $2::date`,
+        [ctx.shopId, targetDate]
+      )).rows[0];
+
+      // 5. Stylist performance breakdown
+      const workerRoster = (await c.query(
+        `SELECT
+           w.id,
+           w.display_name,
+           count(a.id) FILTER (WHERE a.status = 'completed')::int AS completed_appointments,
+           COALESCE(sum(inv.final_total_paise) FILTER (WHERE inv.payment_status = 'paid'), 0)::bigint AS revenue_paise,
+           COALESCE((
+             SELECT sum(wcl.amount_paise)
+             FROM worker_commission_ledger wcl
+             WHERE wcl.worker_id = w.id
+               AND wcl.type IN ('service_commission', 'product_commission')
+               AND wcl.created_at >= $2::date AND wcl.created_at < ($2::date + interval '1 day')
+           ), 0)::bigint AS earned_commission_paise,
+           COALESCE((
+             SELECT sum(wcl.amount_paise)
+             FROM worker_commission_ledger wcl
+             WHERE wcl.worker_id = w.id
+               AND wcl.type = 'tip'
+               AND wcl.created_at >= $2::date AND wcl.created_at < ($2::date + interval '1 day')
+           ), 0)::bigint AS earned_tips_paise
+         FROM workers w
+         LEFT JOIN appointments a ON a.worker_id = w.id AND a.date = $2::date
+         LEFT JOIN invoices inv ON inv.appointment_id = a.id
+         WHERE w.shop_id = $1 AND w.is_active = true
+         GROUP BY w.id, w.display_name
+         ORDER BY revenue_paise DESC, w.display_name ASC`,
+        [ctx.shopId, targetDate]
+      )).rows.map((r) => ({
+        workerId: r.id,
+        displayName: r.display_name,
+        completedAppointments: Number(r.completed_appointments),
+        revenuePaise: Number(r.revenue_paise),
+        earnedCommissionPaise: Number(r.earned_commission_paise),
+        earnedTipsPaise: Number(r.earned_tips_paise),
+      }));
+
+      // 6. Shop Expenses recorded today
+      const expensesList = (await c.query(
+        `SELECT e.id, e.description, e.amount_paise, ec.name AS category_name
+         FROM expenses e
+         LEFT JOIN expense_categories ec ON ec.id = e.category_id
+         WHERE e.shop_id = $1 AND e.date = $2::date
+         ORDER BY e.created_at ASC`,
+        [ctx.shopId, targetDate]
+      )).rows.map((exp) => ({
+        id: exp.id,
+        description: exp.description,
+        category: exp.category_name || 'General',
+        amountPaise: Number(exp.amount_paise),
+      }));
+
+      const totalExpensesPaise = expensesList.reduce((acc, e) => acc + e.amountPaise, 0);
+
+      return {
+        date: targetDate,
+        shop: {
+          id: shop?.id,
+          name: shop?.name || 'Classic Barber Shop',
+          slug: shop?.slug || 'classic-barber',
+          phone: shop?.phone || null,
+          gstNo: shop?.gst_no || null,
+          timezone: shop?.timezone || 'Asia/Kolkata',
+        },
+        revenue: {
+          totalInvoices: Number(invSummary?.total_invoices || 0),
+          grossSubtotalPaise: Number(invSummary?.gross_subtotal_paise || 0),
+          totalDiscountsPaise: Number(invSummary?.total_discounts_paise || 0),
+          totalTipsPaise: Number(invSummary?.total_tips_paise || 0),
+          netRevenuePaise: Number(invSummary?.net_revenue_paise || 0),
+          serviceRevenuePaise,
+          productRevenuePaise,
+        },
+        drawerReconciliation: {
+          expectedCashInDrawerPaise: cashTotalPaise,
+          cash: { count: cashTransactionsCount, amountPaise: cashTotalPaise },
+          upi: { count: upiTransactionsCount, amountPaise: upiTotalPaise },
+          onlineGateway: { count: onlineTransactionsCount, amountPaise: onlineTotalPaise },
+        },
+        appointments: {
+          total: Number(apptCounts?.total_appointments || 0),
+          completed: Number(apptCounts?.completed_count || 0),
+          cancelled: Number(apptCounts?.cancelled_count || 0),
+          noShow: Number(apptCounts?.no_show_count || 0),
+          walkIn: Number(apptCounts?.walk_in_count || 0),
+          online: Number(apptCounts?.online_booking_count || 0),
+        },
+        workers: workerRoster,
+        expenses: {
+          totalExpensesPaise,
+          items: expensesList,
+        },
+        netCashFlowPaise: Number(invSummary?.net_revenue_paise || 0) - totalExpensesPaise,
+      };
+    });
+  }
 }

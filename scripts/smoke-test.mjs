@@ -281,6 +281,15 @@ async function runSmokeTests() {
   );
 
   record(
+    await testStep('End-of-Day Daily Reconciliation (GET /reports/eod)', async () => {
+      const eod = await fetchJson(`${API_BASE}/reports/eod`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      return `Date: ${eod.date}, Expected Cash: ₹${((eod.drawerReconciliation?.expectedCashInDrawerPaise || 0) / 100).toFixed(2)}, Invoices: ${eod.revenue?.totalInvoices || 0}`;
+    })
+  );
+
+  record(
     await testStep('Shop Database Backup Snapshot (GET /shops/current/backup)', async () => {
       const backup = await fetchJson(`${API_BASE}/shops/current/backup`, {
         headers: { Authorization: `Bearer ${ownerToken}` },
@@ -305,6 +314,7 @@ async function runSmokeTests() {
     ['Barber Station Login Portal (GET /worker)', `${WEB_BASE}/worker`],
     ['Admin Dashboard Portal (GET /admin/dashboard)', `${WEB_BASE}/admin/dashboard`],
     ['Admin POS Billing Portal (GET /admin/billing)', `${WEB_BASE}/admin/billing`],
+    ['Admin Reports & Analytics Portal (GET /admin/reports)', `${WEB_BASE}/admin/reports`],
     ['Admin Settings Portal (GET /admin/settings)', `${WEB_BASE}/admin/settings`],
     ['PWA Web App Manifest (GET /manifest.webmanifest)', `${WEB_BASE}/manifest.webmanifest`],
     ['App Launcher SVG Icon (GET /icon.svg)', `${WEB_BASE}/icon.svg`],
