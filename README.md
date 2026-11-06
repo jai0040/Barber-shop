@@ -17,6 +17,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Append-only status audit log with timestamps and notes.
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
   - Customer self-service online cancellation (`/my-account` -> `POST /me/shops/:slug/appointments/:id/cancel`) enforcing the shop's configurable cancellation cooldown window (`cancellation_cooldown_hours`), automatically releasing the booked chair slot, updating status history, and dispatching in-app alerts to salon staff.
+  - Automated upcoming appointment reminder dispatch engine (`POST /appointments/dispatch-reminders`) and 1-click admin trigger (`/admin/appointments`) broadcasting in-app and WhatsApp reminders for appointments within upcoming service windows.
   - Walk-in support with admin barber assignment.
 
 - **Services Catalog & Stylist Matrix (Sections 7, 8 & 71)**:
@@ -259,7 +260,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (32 Probes)
+### End-to-End System Smoke Probe (34 Probes)
 Verify full system health, live database readiness, worker queues, owner reports, payment credentials, backup export, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
