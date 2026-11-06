@@ -118,6 +118,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Next.js 14 Web Manifest (`/manifest.webmanifest`) configured with `display: 'standalone'`, theme color `#d97706`, and dark navy background `#020617`.
   - Amber/gold gradient vector icon (`/icon.svg`) serving as high-resolution favicon and mobile home screen launcher badge.
   - iOS-native standalone meta tags (`appleWebApp: { capable: true, statusBarStyle: 'black-translucent' }`).
+  - **PWA Offline Service Worker & Connectivity Sentinel**: Dedicated service worker (`/sw.js`) pre-caching app shell assets and static chunks with a real-time network connectivity sentinel (`PwaRegister`) that notifies staff with floating offline/reconnected status pills.
 
 - **SEO Directives & Crawling Metadata (Phase 9)**:
   - Dynamic `robots.txt` (`/robots.txt`) granting full crawling access to public shop catalogs, services, and booking flows while protecting private portals (`/admin/`, `/worker/`, `/auth/`, `/my-account/`).
@@ -261,7 +262,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (36 Probes)
+### End-to-End System Smoke Probe (37 Probes)
 Verify full system health, live database readiness, worker queues, owner reports, payment credentials, backup export, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
