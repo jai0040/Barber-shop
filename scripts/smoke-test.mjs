@@ -299,6 +299,20 @@ async function runSmokeTests() {
     })
   );
 
+  record(
+    await testStep('Outbound Webhook Delivery Ping (POST /notifications/test-webhook)', async () => {
+      const ping = await fetchJson(`${API_BASE}/notifications/test-webhook`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        body: JSON.stringify({
+          webhookUrl: 'https://example.com/barber-webhook-receiver',
+          webhookSecret: 'whsec_smoke_test_secret_123',
+        }),
+      });
+      return `Status: ${ping.status} (${ping.statusText || 'OK'}), Latency: ${ping.durationMs}ms`;
+    })
+  );
+
   // --------------------------------------------------------------------------
   // 5. Next.js Web Frontend & PWA Metadata Routes
   // --------------------------------------------------------------------------

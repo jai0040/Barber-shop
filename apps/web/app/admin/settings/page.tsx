@@ -23,6 +23,10 @@ import {
   Copy,
   Download,
   Database,
+  Webhook,
+  Bell,
+  Send,
+  Radio,
 } from 'lucide-react';
 
 const WEEKDAYS = [
@@ -76,6 +80,21 @@ export default function AdminSettingsPage() {
   // Booking Settings State
   const [cooldownHours, setCooldownHours] = useState('24');
   const [advanceDays, setAdvanceDays] = useState('30');
+
+  // Webhooks & Automated Reminders State
+  const [autoRemindersEnabled, setAutoRemindersEnabled] = useState(true);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState('');
+  const [savingWebhooks, setSavingWebhooks] = useState(false);
+  const [testingWebhook, setTestingWebhook] = useState(false);
+  const [webhookTestResult, setWebhookTestResult] = useState<{
+    success: boolean;
+    status?: number;
+    statusText?: string;
+    durationMs?: number;
+    error?: string;
+    responseSnippet?: string;
+  } | null>(null);
 
   // Payment Gateway State
   const [razorpayKeyId, setRazorpayKeyId] = useState('');
@@ -133,8 +152,11 @@ export default function AdminSettingsPage() {
       setHasUpiQr(!!shopData.hasUpiQr);
 
       if (shopData.settings) {
-        setCooldownHours(String(shopData.settings.cancellationCooldownHours ?? 24));
-        setAdvanceDays(String(shopData.settings.advanceBookingDays ?? 30));
+        setCooldownHours(String(shopData.settings.cancellationCooldownHours ?? shopData.settings.cancellation_cooldown_hours ?? 24));
+        setAdvanceDays(String(shopData.settings.advanceBookingDays ?? shopData.settings.advance_booking_days ?? 30));
+        setAutoRemindersEnabled(shopData.settings.autoRemindersEnabled ?? shopData.settings.auto_reminders_enabled !== false);
+        setWebhookUrl(shopData.settings.webhookUrl || shopData.settings.webhook_url || '');
+        setWebhookSecret(shopData.settings.webhookSecret || shopData.settings.webhook_secret || '');
       }
 
       // Normalize hours across all 7 ISO days
@@ -228,6 +250,61 @@ export default function AdminSettingsPage() {
       notify(err.message || 'Failed to save booking policies.', 'error');
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleSaveWebhooks(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      setSavingWebhooks(true);
+      await apiRequest('/shops/current/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          autoRemindersEnabled,
+          webhookUrl: webhookUrl.trim() || null,
+          webhookSecret: webhookSecret.trim() || null,
+        }),
+      });
+      notify('Webhook and reminder settings saved successfully.');
+    } catch (err: any) {
+      notify(err.message || 'Failed to save webhook settings.', 'error');
+    } finally {
+      setSavingWebhooks(false);
+    }
+  }
+
+  async function handleTestWebhook() {
+    if (!webhookUrl.trim()) {
+      notify('Please enter a Webhook URL first.', 'error');
+      return;
+    }
+    try {
+      setTestingWebhook(true);
+      setWebhookTestResult(null);
+      const res = await apiRequest<{
+        success: boolean;
+        status?: number;
+        statusText?: string;
+        durationMs?: number;
+        error?: string;
+        responseSnippet?: string;
+      }>('/notifications/test-webhook', {
+        method: 'POST',
+        body: JSON.stringify({
+          webhookUrl: webhookUrl.trim(),
+          webhookSecret: webhookSecret.trim() || undefined,
+        }),
+      });
+      setWebhookTestResult(res);
+      if (res.success) {
+        notify(`Webhook responded successfully with HTTP ${res.status} (${res.durationMs}ms)!`);
+      } else {
+        notify(`Webhook ping test: ${res.statusText || res.error || 'Failed'}`, 'error');
+      }
+    } catch (err: any) {
+      notify(err.message || 'Webhook ping failed.', 'error');
+    } finally {
+      setTestingWebhook(false);
     }
   }
 
@@ -907,6 +984,142 @@ export default function AdminSettingsPage() {
                 >
                   <Save className="w-4 h-4" />
                   {savingGateway ? 'Saving...' : 'Save Payment Gateway'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Card 6: Outbound Webhooks & Automated Reminders */}
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 backdrop-blur-sm shadow-sm">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                  <Webhook className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-white">Outbound Webhooks & Automated Reminders</h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      HMAC SHA-256
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Broadcast real-time salon events to external endpoints and automate client appointment reminders.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveWebhooks} className="mt-5 space-y-5">
+              {/* Automated Reminders Switch */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-400" />
+                    <label htmlFor="autoReminders" className="text-xs font-bold text-white cursor-pointer">
+                      Automated Background Reminders
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Runs every 30 minutes in the background, dispatching WhatsApp alerts and station notifications for bookings starting within 3 hours.
+                  </p>
+                </div>
+                <input
+                  id="autoReminders"
+                  type="checkbox"
+                  checked={autoRemindersEnabled}
+                  onChange={(e) => setAutoRemindersEnabled(e.target.checked)}
+                  className="w-5 h-5 rounded border-slate-700 text-amber-500 focus:ring-amber-500 bg-slate-900 cursor-pointer"
+                />
+              </div>
+
+              {/* Webhook Endpoint & Secret */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                    Webhook Destination URL
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://your-crm.com/api/barber-events"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    HTTP/HTTPS POST target for real-time booking, payment, and inventory events.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] uppercase font-semibold text-slate-400 mb-1">
+                    Webhook HMAC Secret (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="whsec_..."
+                    value={webhookSecret}
+                    onChange={(e) => setWebhookSecret(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Used to sign requests via header <code className="text-purple-300">X-BarberShop-Signature: sha256=...</code>
+                  </p>
+                </div>
+              </div>
+
+              {/* Ping Test Response Banner */}
+              {webhookTestResult && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex flex-col gap-1.5 ${
+                    webhookTestResult.success
+                      ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300'
+                      : 'bg-rose-950/40 border-rose-800 text-rose-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      {webhookTestResult.success ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <AlertCircle className="w-4 h-4 text-rose-400" />}
+                      {webhookTestResult.success ? `Ping Succeeded (HTTP ${webhookTestResult.status})` : `Ping Failed (${webhookTestResult.statusText || webhookTestResult.error})`}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">{webhookTestResult.durationMs}ms</span>
+                  </div>
+                  {webhookTestResult.responseSnippet && (
+                    <div className="text-[10px] bg-slate-950/80 p-2 rounded border border-slate-800 font-mono break-all text-slate-300">
+                      Response: {webhookTestResult.responseSnippet}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestWebhook}
+                  disabled={testingWebhook || !webhookUrl.trim()}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-2 border border-slate-700 active:scale-95 transition-all cursor-pointer disabled:opacity-40"
+                >
+                  {testingWebhook ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Testing Ping...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      Test Webhook Delivery
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={savingWebhooks}
+                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-md active:scale-95 transition-all cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingWebhooks ? 'Saving...' : 'Save Webhook & Reminders'}
                 </button>
               </div>
             </form>

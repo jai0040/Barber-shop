@@ -342,6 +342,33 @@ let createdNotifId: string;
     assert.strictEqual(resB.body.data.items.length, 0); // Completely isolated
   });
 
+  it('11. Allows testing outbound webhooks and updating webhook settings', async () => {
+    // 1. Update shop settings with webhook URL & secret & autoRemindersEnabled
+    const patchSettings = await h.call('PATCH', '/shops/current/settings', {
+      token: ownerTokenA,
+      body: {
+        autoRemindersEnabled: true,
+        webhookUrl: 'https://example.com/barber-webhook',
+        webhookSecret: 'secret_wh_123',
+      },
+    });
+    assert.strictEqual(patchSettings.status, 200);
+    assert.strictEqual(patchSettings.body.data.webhook_url, 'https://example.com/barber-webhook');
+    assert.strictEqual(patchSettings.body.data.auto_reminders_enabled, true);
+
+    // 2. Test webhook delivery ping endpoint
+    const testPing = await h.call('POST', '/notifications/test-webhook', {
+      token: ownerTokenA,
+      body: {
+        webhookUrl: 'https://example.com/webhook-receiver',
+        webhookSecret: 'secret_test_xyz',
+      },
+    });
+    assert.strictEqual(testPing.status, 200);
+    assert.ok(testPing.body.data.hasOwnProperty('success'));
+    assert.ok(testPing.body.data.hasOwnProperty('durationMs'));
+  });
+
   after(async () => {
     if (h) await h.close();
   });

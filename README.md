@@ -74,9 +74,12 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Admin review moderation board (`/admin/reviews`) with publish, hide, flag controls, and 1-click owner replies.
   - Customer self-service "Rate & Review" modal directly on past completed visits (`/my-account`).
 
-- **In-System Notifications & WhatsApp Alert Engine (Phase 7)**:
+- **In-System Notifications & Outbound Webhook Engine (Phase 7)**:
   - Real-time in-app alert dispatcher with unread badge counter in admin header (`NotificationBell`).
   - Automated event trigger hooks for new bookings, appointment confirmations, status changes, POS payments, low-stock alerts, and 5-star customer reviews.
+  - **Automated Hands-Free Reminder Scheduler**: Background interval worker (`AppointmentsSchedulerService`) sweeping every 30 minutes to broadcast upcoming appointment reminders and WhatsApp alerts for bookings starting within 3 hours.
+  - **Outbound Webhook Delivery & Cryptographic Signing**: Real-time HTTP/HTTPS notification events dispatched to configured shop endpoints with HMAC SHA-256 integrity verification (`X-BarberShop-Signature: sha256=...`).
+  - **Interactive Webhook Testing Hub**: Admin settings test runner (`POST /notifications/test-webhook` via `/admin/settings`) allowing live ping delivery verification with response code, latency, and payload preview.
   - Ready-to-send click-to-chat WhatsApp deep links (`https://wa.me/...`) for digital receipts and appointment confirmations.
   - Customer portal alerts and 1-click WhatsApp share buttons on appointment records (`/my-account`).
 
@@ -262,8 +265,8 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (37 Probes)
-Verify full system health, live database readiness, worker queues, owner reports, payment credentials, backup export, and Next.js static metadata routes against running instances:
+### End-to-End System Smoke Probe (38 Probes)
+Verify full system health, live database readiness, worker queues, owner reports, payment credentials, outbound webhook pings, backup export, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
 ```
@@ -281,7 +284,7 @@ npm run smoke-test
 10. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
 11. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
 12. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
-13. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.
+13. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, outbound webhook dispatch & HMAC-SHA256 signature ping testing, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.
 14. `payment-gateway.test.ts` — Razorpay online orders, HMAC-SHA256 signature verification, webhook handling, shop credentials update, and cross-shop payment isolation.
 15. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
 16. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.

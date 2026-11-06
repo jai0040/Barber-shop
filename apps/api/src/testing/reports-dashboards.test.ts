@@ -82,7 +82,7 @@ before(async () => {
     });
 
     // Create a walk-in appointment today with Rahul and complete it with billing
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
     const walkIn = await h.call('POST', '/appointments/walk-in', {
       token: ownerTokenA,
       body: { customerName: 'Kunal', customerPhone: '+919876540001', workerId: rahulId, serviceIds: [haircutId], date: today, startTime: '10:00' },

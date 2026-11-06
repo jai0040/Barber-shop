@@ -40,3 +40,8 @@ export const createNotificationSchema = z.object({
   customerPhone: z.string().optional(),
   metadata: z.record(z.any()).optional(),
 });
+
+export const testWebhookSchema = z.object({
+  webhookUrl: z.string().trim().url('Please enter a valid HTTP or HTTPS URL'),
+  webhookSecret: z.string().trim().max(128).optional(),
+});

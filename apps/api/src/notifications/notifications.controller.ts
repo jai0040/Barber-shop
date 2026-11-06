@@ -18,6 +18,7 @@ import { NotificationsService } from './notifications.service';
 import {
   createNotificationSchema,
   listNotificationsSchema,
+  testWebhookSchema,
 } from './notifications.schemas';
 
 @Controller('notifications')
@@ -64,6 +65,16 @@ export class NotificationsController {
     @Body(new ZodValidationPipe(createNotificationSchema)) dto: any
   ) {
     return this.svc.dispatch(ctx.shopId!, dto);
+  }
+
+  @RequirePermission('settings.manage')
+  @Post('test-webhook')
+  @HttpCode(200)
+  testWebhook(
+    @Auth() ctx: AuthContext,
+    @Body(new ZodValidationPipe(testWebhookSchema)) dto: any
+  ) {
+    return this.svc.testWebhook(ctx, dto);
   }
 }
 

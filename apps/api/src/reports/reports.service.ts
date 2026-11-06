@@ -10,7 +10,9 @@ export class ReportsService {
 
   async getAdminDashboard(ctx: AuthContext) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const today = new Date().toISOString().slice(0, 10);
+      const shopRow = (await c.query(`SELECT timezone FROM shops WHERE id = $1`, [ctx.shopId])).rows[0];
+      const tz = shopRow?.timezone || 'Asia/Kolkata';
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
       // 1. Appointments counts today
       const aptSummary = (await c.query(
@@ -34,9 +36,8 @@ export class ReportsService {
          LEFT JOIN invoice_items ii ON ii.invoice_id = inv.id
          WHERE inv.shop_id = $1
            AND inv.payment_status = 'paid'
-           AND inv.created_at >= $2::date
-           AND inv.created_at < ($2::date + interval '1 day')`,
-        [ctx.shopId, today]
+           AND (inv.created_at AT TIME ZONE $3)::date = $2::date`,
+        [ctx.shopId, today, tz]
       )).rows[0];
 
       // 3. Expenses today
@@ -139,7 +140,9 @@ export class ReportsService {
 
   async getWorkerDashboard(ctx: AuthContext) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const today = new Date().toISOString().slice(0, 10);
+      const shopRow = (await c.query(`SELECT timezone FROM shops WHERE id = $1`, [ctx.shopId])).rows[0];
+      const tz = shopRow?.timezone || 'Asia/Kolkata';
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
       // Find worker for current user
       const worker = (await c.query(`SELECT id, display_name FROM workers WHERE user_id = $1 AND shop_id = $2`, [ctx.userId, ctx.shopId])).rows[0];
@@ -210,21 +213,24 @@ export class ReportsService {
 
   async getReports(ctx: AuthContext, q: { type: 'sales' | 'workers' | 'customers' | 'inventory' | 'finance'; startDate?: string; endDate?: string }) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const today = new Date().toISOString().slice(0, 10);
+      const shopRow = (await c.query(`SELECT timezone FROM shops WHERE id = $1`, [ctx.shopId])).rows[0];
+      const tz = shopRow?.timezone || 'Asia/Kolkata';
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
       const start = q.startDate ?? today;
       const end = q.endDate ?? today;
 
       if (q.type === 'sales') {
         const rows = (await c.query(
-          `SELECT date_trunc('day', created_at)::date::text AS sale_date,
+          `SELECT (created_at AT TIME ZONE $4)::date::text AS sale_date,
                   count(*)::int AS total_invoices,
                   sum(final_total_paise)::bigint AS total_sales_paise
            FROM invoices
            WHERE shop_id = $1 AND payment_status = 'paid'
-             AND created_at >= $2::date AND created_at < ($3::date + interval '1 day')
+             AND (created_at AT TIME ZONE $4)::date >= $2::date
+             AND (created_at AT TIME ZONE $4)::date <= $3::date
            GROUP BY sale_date
            ORDER BY sale_date ASC`,
-          [ctx.shopId, start, end]
+          [ctx.shopId, start, end, tz]
         )).rows;
         return { type: 'sales', startDate: start, endDate: end, daily: rows };
       }
@@ -248,7 +254,7 @@ export class ReportsService {
 
       if (q.type === 'customers') {
         const totalCustomers = Number((await c.query(`SELECT count(*)::int AS n FROM customers WHERE shop_id = $1`, [ctx.shopId])).rows[0].n);
-        const newInPeriod = Number((await c.query(`SELECT count(*)::int AS n FROM customers WHERE shop_id = $1 AND created_at >= $2::date AND created_at < ($3::date + interval '1 day')`, [ctx.shopId, start, end])).rows[0].n);
+        const newInPeriod = Number((await c.query(`SELECT count(*)::int AS n FROM customers WHERE shop_id = $1 AND (created_at AT TIME ZONE $4)::date >= $2::date AND (created_at AT TIME ZONE $4)::date <= $3::date`, [ctx.shopId, start, end, tz])).rows[0].n);
         return { type: 'customers', totalCustomers, newCustomersInPeriod: newInPeriod };
       }
 
@@ -265,7 +271,7 @@ export class ReportsService {
       }
 
       // Default finance
-      const rev = Number((await c.query(`SELECT COALESCE(sum(final_total_paise), 0) AS rev FROM invoices WHERE shop_id = $1 AND payment_status = 'paid' AND created_at >= $2::date AND created_at < ($3::date + interval '1 day')`, [ctx.shopId, start, end])).rows[0].rev);
+      const rev = Number((await c.query(`SELECT COALESCE(sum(final_total_paise), 0) AS rev FROM invoices WHERE shop_id = $1 AND payment_status = 'paid' AND (created_at AT TIME ZONE $4)::date >= $2::date AND (created_at AT TIME ZONE $4)::date <= $3::date`, [ctx.shopId, start, end, tz])).rows[0].rev);
       const exp = Number((await c.query(`SELECT COALESCE(sum(amount_paise), 0) AS exp FROM expenses WHERE shop_id = $1 AND date >= $2::date AND date <= $3::date`, [ctx.shopId, start, end])).rows[0].exp);
       return {
         type: 'finance',
@@ -283,7 +289,8 @@ export class ReportsService {
   async getEndOfDayReconciliation(ctx: AuthContext, dateStr?: string) {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       const shop = (await c.query('SELECT id, name, slug, phone, gst_no, timezone FROM shops WHERE id = $1', [ctx.shopId])).rows[0];
-      const targetDate = dateStr || new Date().toISOString().slice(0, 10);
+      const tz = shop?.timezone || 'Asia/Kolkata';
+      const targetDate = dateStr || new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
 
       // 1. Invoices & Revenue breakdown
       const invSummary = (await c.query(
@@ -296,8 +303,8 @@ export class ReportsService {
          FROM invoices
          WHERE shop_id = $1
            AND payment_status = 'paid'
-           AND created_at >= $2::date AND created_at < ($2::date + interval '1 day')`,
-        [ctx.shopId, targetDate]
+           AND (created_at AT TIME ZONE $3)::date = $2::date`,
+        [ctx.shopId, targetDate, tz]
       )).rows[0];
 
       // 2. Services vs Products revenue breakdown
@@ -310,9 +317,9 @@ export class ReportsService {
          JOIN invoices inv ON inv.id = ii.invoice_id
          WHERE inv.shop_id = $1
            AND inv.payment_status = 'paid'
-           AND inv.created_at >= $2::date AND inv.created_at < ($2::date + interval '1 day')
+           AND (inv.created_at AT TIME ZONE $3)::date = $2::date
          GROUP BY ii.type`,
-        [ctx.shopId, targetDate]
+        [ctx.shopId, targetDate, tz]
       )).rows;
 
       let serviceRevenuePaise = 0;
@@ -333,9 +340,9 @@ export class ReportsService {
          WHERE p.shop_id = $1
            AND p.status = 'completed'
            AND inv.payment_status = 'paid'
-           AND p.created_at >= $2::date AND p.created_at < ($2::date + interval '1 day')
+           AND (p.created_at AT TIME ZONE $3)::date = $2::date
          GROUP BY p.method`,
-        [ctx.shopId, targetDate]
+        [ctx.shopId, targetDate, tz]
       )).rows;
 
       let cashTotalPaise = 0;
@@ -386,14 +393,14 @@ export class ReportsService {
              FROM worker_commission_ledger wcl
              WHERE wcl.worker_id = w.id
                AND wcl.type IN ('service_commission', 'product_commission')
-               AND wcl.created_at >= $2::date AND wcl.created_at < ($2::date + interval '1 day')
+               AND (wcl.created_at AT TIME ZONE $3)::date = $2::date
            ), 0)::bigint AS earned_commission_paise,
            COALESCE((
              SELECT sum(wcl.amount_paise)
              FROM worker_commission_ledger wcl
              WHERE wcl.worker_id = w.id
                AND wcl.type = 'tip'
-               AND wcl.created_at >= $2::date AND wcl.created_at < ($2::date + interval '1 day')
+               AND (wcl.created_at AT TIME ZONE $3)::date = $2::date
            ), 0)::bigint AS earned_tips_paise
          FROM workers w
          LEFT JOIN appointments a ON a.worker_id = w.id AND a.date = $2::date
@@ -401,7 +408,7 @@ export class ReportsService {
          WHERE w.shop_id = $1 AND w.is_active = true
          GROUP BY w.id, w.display_name
          ORDER BY revenue_paise DESC, w.display_name ASC`,
-        [ctx.shopId, targetDate]
+        [ctx.shopId, targetDate, tz]
       )).rows.map((r) => ({
         workerId: r.id,
         displayName: r.display_name,

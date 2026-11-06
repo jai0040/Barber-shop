@@ -9,7 +9,13 @@ import { FilesService } from '../files/files.service';
 
 const notFound = (m = 'Shop not found.') => new AppException(404, ErrorCodes.NOT_FOUND, m);
 const COLS: Record<string, string> = { name: 'name', phone: 'phone', email: 'email', address: 'address', city: 'city', state: 'state', country: 'country', gstNo: 'gst_no', timezone: 'timezone' };
-const DEFAULT_SETTINGS = { cancellation_cooldown_hours: 24, advance_booking_days: 30 };
+const DEFAULT_SETTINGS = {
+  cancellation_cooldown_hours: 24,
+  advance_booking_days: 30,
+  auto_reminders_enabled: true,
+  webhook_url: null,
+  webhook_secret: null,
+};
 
 const hhmm = (t: string | null) => (t ? t.slice(0, 5) : null);
 const hoursOut = (rows: any[]) => rows.map((h) => ({ weekday: h.weekday, isClosed: h.is_closed, openTime: hhmm(h.open_time), closeTime: hhmm(h.close_time) }));
@@ -57,10 +63,19 @@ export class ShopsService {
     });
   }
 
-  updateSettings(ctx: AuthContext, dto: { cancellationCooldownHours?: number; advanceBookingDays?: number }) {
-    const patch: Record<string, number> = {};
+  updateSettings(ctx: AuthContext, dto: {
+    cancellationCooldownHours?: number;
+    advanceBookingDays?: number;
+    autoRemindersEnabled?: boolean;
+    webhookUrl?: string | null;
+    webhookSecret?: string | null;
+  }) {
+    const patch: Record<string, any> = {};
     if (dto.cancellationCooldownHours !== undefined) patch.cancellation_cooldown_hours = dto.cancellationCooldownHours;
     if (dto.advanceBookingDays !== undefined) patch.advance_booking_days = dto.advanceBookingDays;
+    if (dto.autoRemindersEnabled !== undefined) patch.auto_reminders_enabled = dto.autoRemindersEnabled;
+    if (dto.webhookUrl !== undefined) patch.webhook_url = dto.webhookUrl;
+    if (dto.webhookSecret !== undefined) patch.webhook_secret = dto.webhookSecret;
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
       const old = (await c.query('SELECT settings FROM shops WHERE id=$1 FOR UPDATE', [ctx.shopId])).rows[0].settings;
       const next = (await c.query('UPDATE shops SET settings = settings || $2::jsonb, updated_at = now() WHERE id=$1 RETURNING settings', [ctx.shopId, JSON.stringify(patch)])).rows[0].settings;

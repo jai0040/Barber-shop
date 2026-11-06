@@ -113,7 +113,9 @@ export class FinanceService {
       const cat = (await c.query(`SELECT id, name FROM expense_categories WHERE id = $1 AND shop_id = $2`, [dto.categoryId, ctx.shopId])).rows[0];
       if (!cat) throw notFound('Expense category not found.');
 
-      const dateStr = dto.date ?? new Date().toISOString().slice(0, 10);
+      const shopRow = (await c.query(`SELECT timezone FROM shops WHERE id = $1`, [ctx.shopId])).rows[0];
+      const tz = shopRow?.timezone || 'Asia/Kolkata';
+      const dateStr = dto.date ?? new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
       const res = await c.query(
         `INSERT INTO expenses (shop_id, category_id, amount_paise, date, description, payment_method, created_by)
          VALUES ($1, $2, $3, $4::date, $5, $6, $7)
@@ -171,7 +173,9 @@ export class FinanceService {
 
   async getSummary(ctx: AuthContext, q?: { startDate?: string; endDate?: string }): Promise<FinanceSummary> {
     return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const shopRow = (await c.query(`SELECT timezone FROM shops WHERE id = $1`, [ctx.shopId])).rows[0];
+      const tz = shopRow?.timezone || 'Asia/Kolkata';
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
       const start = q?.startDate ?? todayStr;
       const end = q?.endDate ?? todayStr;
 
@@ -184,9 +188,9 @@ export class FinanceService {
          JOIN invoices inv ON inv.id = ii.invoice_id
          WHERE inv.shop_id = $1
            AND inv.payment_status = 'paid'
-           AND inv.created_at >= $2::date
-           AND inv.created_at < ($3::date + interval '1 day')`,
-        [ctx.shopId, start, end]
+           AND (inv.created_at AT TIME ZONE $4)::date >= $2::date
+           AND (inv.created_at AT TIME ZONE $4)::date <= $3::date`,
+        [ctx.shopId, start, end, tz]
       );
 
       const totRes = await c.query(
@@ -194,9 +198,9 @@ export class FinanceService {
          FROM invoices
          WHERE shop_id = $1
            AND payment_status = 'paid'
-           AND created_at >= $2::date
-           AND created_at < ($3::date + interval '1 day')`,
-        [ctx.shopId, start, end]
+           AND (created_at AT TIME ZONE $4)::date >= $2::date
+           AND (created_at AT TIME ZONE $4)::date <= $3::date`,
+        [ctx.shopId, start, end, tz]
       );
 
       const serviceRevenuePaise = Number(revRes.rows[0].service_rev);

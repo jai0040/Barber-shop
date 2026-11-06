@@ -43,6 +43,9 @@ export const hoursSchema = z.object({
 export const settingsSchema = z.object({
   cancellationCooldownHours: z.number().int().min(0).max(720),
   advanceBookingDays: z.number().int().min(1).max(365),
+  autoRemindersEnabled: z.boolean().optional(),
+  webhookUrl: z.string().trim().url('Must be a valid HTTP or HTTPS URL').nullable().optional(),
+  webhookSecret: z.string().trim().max(128).nullable().optional(),
 }).partial().refine((v) => Object.keys(v).length > 0, 'Nothing to update');
 
 export const publicListSchema = z.object({
