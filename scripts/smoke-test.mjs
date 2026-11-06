@@ -317,6 +317,7 @@ async function runSmokeTests() {
     ['Admin Reports & Analytics Portal (GET /admin/reports)', `${WEB_BASE}/admin/reports`],
     ['Admin Settings Portal (GET /admin/settings)', `${WEB_BASE}/admin/settings`],
     ['PWA Web App Manifest (GET /manifest.webmanifest)', `${WEB_BASE}/manifest.webmanifest`],
+    ['PWA Offline Service Worker (GET /sw.js)', `${WEB_BASE}/sw.js`],
     ['App Launcher SVG Icon (GET /icon.svg)', `${WEB_BASE}/icon.svg`],
     ['Robots Directives (GET /robots.txt)', `${WEB_BASE}/robots.txt`],
     ['XML Sitemap (GET /sitemap.xml)', `${WEB_BASE}/sitemap.xml`],

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import PwaRegister from '@/components/PwaRegister';
 
 export const metadata: Metadata = {
   title: {
@@ -34,6 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-slate-50 text-slate-900 antialiased selection:bg-amber-100 selection:text-amber-900">
+        <PwaRegister />
         {children}
       </body>
     </html>
