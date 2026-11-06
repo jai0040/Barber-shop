@@ -157,6 +157,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Operating expense tracking with custom categories (Rent, Utilities, Salaries, Supplies) (`/admin/finance`).
   - Automated ledger entry for inventory purchases.
   - Real-time net profit/loss calculation (Revenue − Expenses).
+  - **End-of-Day (EOD) Daily Cash & Drawer Reconciliation Report**: Complete closing sheet (`/reports/eod` -> `/admin/reports`) itemizing Expected Cash in Drawer, UPI QR, and online gateway receipts against gross sales, discounts, tips, stylist commissions, and petty expenses disbursed with 1-click printable sheet and CSV export.
 
 - **Role-Based Access Control (RBAC)**:
   - Six granular roles: Platform Super Admin, Shop Owner / Main Admin, Manager, Worker, Cashier, Inventory Manager.
@@ -260,7 +261,7 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (34 Probes)
+### End-to-End System Smoke Probe (36 Probes)
 Verify full system health, live database readiness, worker queues, owner reports, payment credentials, backup export, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
