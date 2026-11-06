@@ -20,6 +20,7 @@ import {
   Search,
   RefreshCw,
   Download,
+  Bell,
 } from 'lucide-react';
 import { downloadCsv } from '@/lib/csv';
 
@@ -93,6 +94,10 @@ function AdminAppointmentsContent() {
   const [selectedAssignWorker, setSelectedAssignWorker] = useState('');
   const [selectedAddServiceId, setSelectedAddServiceId] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Dispatch Reminders state
+  const [dispatchingReminders, setDispatchingReminders] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   useEffect(() => {
     loadPrerequisites();
@@ -230,6 +235,35 @@ function AdminAppointmentsContent() {
     );
   });
 
+  async function handleDispatchReminders() {
+    try {
+      setDispatchingReminders(true);
+      const res = await apiRequest<{ count: number; reminded: Array<{ id: string; customerName: string; time: string }> }>(
+        '/appointments/dispatch-reminders',
+        {
+          method: 'POST',
+          body: JSON.stringify({ windowMinutes: 180 }),
+        }
+      );
+      if (res.count > 0) {
+        setReminderMsg({
+          text: `Dispatched automated reminders for ${res.count} upcoming appointment(s)!`,
+          type: 'success',
+        });
+      } else {
+        setReminderMsg({
+          text: 'No unnotified appointments scheduled in the next 3 hours.',
+          type: 'info',
+        });
+      }
+      setTimeout(() => setReminderMsg(null), 5000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to dispatch reminders.');
+    } finally {
+      setDispatchingReminders(false);
+    }
+  }
+
   function handleExportCsv() {
     const rows = filteredAppointments.map((apt) => [
       apt.id,
@@ -272,6 +306,15 @@ function AdminAppointmentsContent() {
       actions={
         <div className="flex items-center gap-2">
           <button
+            onClick={handleDispatchReminders}
+            disabled={dispatchingReminders}
+            className="px-3 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            title="Dispatch automated reminders to upcoming clients starting in the next 3 hours"
+          >
+            <Bell className={`w-4 h-4 ${dispatchingReminders ? 'animate-spin' : ''}`} />
+            {dispatchingReminders ? 'Sending...' : 'Send Reminders'}
+          </button>
+          <button
             onClick={handleExportCsv}
             className="px-3 py-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
             title="Export CSV"
@@ -295,6 +338,19 @@ function AdminAppointmentsContent() {
         </div>
       }
     >
+      {reminderMsg && (
+        <div
+          className={`mb-4 p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2.5 transition-all ${
+            reminderMsg.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{reminderMsg.text}</span>
+        </div>
+      )}
+
       {/* Filter Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 mb-6 shadow-xl space-y-4 md:space-y-0 md:flex md:items-center md:justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">

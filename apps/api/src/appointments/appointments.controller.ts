@@ -64,6 +64,12 @@ export class AppointmentsController {
   ) {
     return this.svc.addService(ctx, id, dto.serviceId);
   }
+
+  @RequirePermission('appointments.update')
+  @Post('dispatch-reminders')
+  dispatchReminders(@Auth() ctx: AuthContext, @Body() body?: { windowMinutes?: number }) {
+    return this.svc.dispatchUpcomingReminders(ctx, body?.windowMinutes);
+  }
 }
 
 @Public()

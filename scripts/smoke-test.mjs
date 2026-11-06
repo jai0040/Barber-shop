@@ -270,6 +270,17 @@ async function runSmokeTests() {
   );
 
   record(
+    await testStep('Upcoming Appointment Reminders Dispatch (POST /appointments/dispatch-reminders)', async () => {
+      const res = await fetchJson(`${API_BASE}/appointments/dispatch-reminders`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        body: JSON.stringify({ windowMinutes: 180 }),
+      });
+      return `Processed: ${res.count ?? 0} reminders dispatched`;
+    })
+  );
+
+  record(
     await testStep('Shop Database Backup Snapshot (GET /shops/current/backup)', async () => {
       const backup = await fetchJson(`${API_BASE}/shops/current/backup`, {
         headers: { Authorization: `Bearer ${ownerToken}` },
@@ -290,6 +301,7 @@ async function runSmokeTests() {
     ['Public Barbers Showcase (GET /classic-barber/barbers)', `${WEB_BASE}/classic-barber/barbers`],
     ['VIP Memberships Catalog (GET /classic-barber/memberships)', `${WEB_BASE}/classic-barber/memberships`],
     ['Customer Reviews Showcase (GET /classic-barber/reviews)', `${WEB_BASE}/classic-barber/reviews`],
+    ['Customer Self-Service Account Portal (GET /my-account)', `${WEB_BASE}/my-account`],
     ['Barber Station Login Portal (GET /worker)', `${WEB_BASE}/worker`],
     ['Admin Dashboard Portal (GET /admin/dashboard)', `${WEB_BASE}/admin/dashboard`],
     ['Admin POS Billing Portal (GET /admin/billing)', `${WEB_BASE}/admin/billing`],

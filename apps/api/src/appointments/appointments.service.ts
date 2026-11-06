@@ -574,4 +574,112 @@ export class AppointmentsService {
       updatedAt: row.updated_at.toISOString(),
     };
   }
+
+  async dispatchUpcomingReminders(ctx: AuthContext, windowMinutes = 120): Promise<{ count: number; reminded: Array<{ id: string; appointmentNumber: number; customerName: string; time: string }> }> {
+    return this.db.tenant({ shopId: ctx.shopId }, async (c) => {
+      const shop = (await c.query('SELECT id, name, phone, timezone FROM shops WHERE id = $1', [ctx.shopId])).rows[0];
+      if (!shop) throw notFound();
+
+      const query = `
+        SELECT a.id, a.appointment_number, a.customer_id, c.name as customer_name, c.phone as customer_phone,
+               w.id as worker_id, w.display_name as worker_name, w.user_id as worker_user_id,
+               a.date::text as date, a.start_time::text as start_time, a.start_at,
+               COALESCE(
+                 (SELECT array_agg(COALESCE(s.name_snapshot, s.service_name))
+                  FROM appointment_services s
+                  WHERE s.appointment_id = a.id AND s.removed_at IS NULL),
+                 '{}'
+               ) as service_names
+        FROM appointments a
+        JOIN customers c ON c.id = a.customer_id
+        LEFT JOIN workers w ON w.id = a.worker_id
+        WHERE a.shop_id = $1
+          AND a.status IN ('booked', 'confirmed')
+          AND a.start_at >= now() - interval '15 minutes'
+          AND a.start_at <= now() + ($2 || ' minutes')::interval
+          AND NOT EXISTS (
+            SELECT 1 FROM notifications n
+            WHERE n.shop_id = a.shop_id
+              AND n.customer_id = a.customer_id
+              AND (n.metadata->>'appointmentId') = a.id::text
+              AND (n.metadata->>'isReminder') = 'true'
+          )
+        ORDER BY a.start_at ASC
+      `;
+
+      const rows = (await c.query(query, [ctx.shopId, windowMinutes])).rows;
+      const reminded: Array<{ id: string; appointmentNumber: number; customerName: string; time: string }> = [];
+
+      for (const row of rows) {
+        const srvText = (row.service_names && row.service_names.length) ? row.service_names.join(', ') : 'Grooming Services';
+        const workerText = row.worker_name ? ` with ${row.worker_name}` : '';
+        const timeStr = row.start_time ? row.start_time.slice(0, 5) : '';
+
+        const clientReminderMsg = `${shop.name}: Friendly reminder! Your appointment #${row.appointment_number} for ${srvText}${workerText} is scheduled for today at ${timeStr}. We look forward to seeing you!`;
+        const adminReminderMsg = `Reminder: Appointment #${row.appointment_number} for ${row.customer_name} is starting at ${timeStr}${workerText}.`;
+
+        const whatsappUrl = this.notifications?.buildWhatsAppLink(row.customer_phone, clientReminderMsg);
+
+        // 1. Client notification (In-app + WhatsApp link)
+        await c.query(
+          `INSERT INTO notifications (shop_id, customer_id, title, message, type, channel, status, metadata, whatsapp_url)
+           VALUES ($1, $2, $3, $4, 'appointment_confirmed', 'in_app', 'unread', $5, $6)`,
+          [
+            ctx.shopId,
+            row.customer_id,
+            `Upcoming Appointment Reminder #${row.appointment_number}`,
+            clientReminderMsg,
+            JSON.stringify({
+              appointmentId: row.id,
+              appointmentNumber: row.appointment_number,
+              customerPhone: row.customer_phone,
+              isReminder: true,
+              scheduledTime: timeStr,
+            }),
+            whatsappUrl || null,
+          ]
+        );
+
+        // 2. Staff notification
+        await c.query(
+          `INSERT INTO notifications (shop_id, user_id, title, message, type, channel, status, metadata)
+           VALUES ($1, $2, $3, $4, 'appointment_confirmed', 'in_app', 'unread', $5)`,
+          [
+            ctx.shopId,
+            row.worker_user_id || null,
+            `Upcoming Appointment #${row.appointment_number} in Chair`,
+            adminReminderMsg,
+            JSON.stringify({
+              appointmentId: row.id,
+              appointmentNumber: row.appointment_number,
+              customerName: row.customer_name,
+              isReminder: true,
+              scheduledTime: timeStr,
+            }),
+          ]
+        );
+
+        reminded.push({
+          id: row.id,
+          appointmentNumber: row.appointment_number,
+          customerName: row.customer_name,
+          time: timeStr,
+        });
+      }
+
+      if (reminded.length > 0) {
+        await this.audit.log(c, {
+          shopId: ctx.shopId,
+          userId: ctx.userId,
+          action: 'appointment.reminders.dispatch',
+          entity: 'appointment',
+          entityId: ctx.shopId!,
+          newValues: { count: reminded.length, reminded },
+          ip: ctx.ip,
+        });
+      }
+
+      return { count: reminded.length, reminded };
+    });
+  }
 }
