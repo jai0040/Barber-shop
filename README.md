@@ -8,6 +8,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
 
 - **Customer Appointment Management**:
   - Mobile-first responsive customer booking flow (`/[slug]/book`).
+  - Multi-language (English / Hindi) toggle (`[EN | हिन्दी]`) localizing service catalog, barber selection, time slots, customer contact forms, and appointment confirmation receipts with persistent preference.
   - Deep-link query parameter preselection support for services and preferred barbers (`/[slug]/book?serviceId=...&workerId=...`).
   - Multi-service selection with cumulative duration & price calculation.
   - Preferred barber selection or **"Any Available Barber"** automated slot matching.

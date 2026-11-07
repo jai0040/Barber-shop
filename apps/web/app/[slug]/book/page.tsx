@@ -21,6 +21,131 @@ import CustomerBottomNav from '@/components/customer/BottomNav';
 import { apiRequest, formatINR, getSession } from '@/lib/api';
 import { AppointmentItem, ServiceItem, TimeSlot, WorkerItem } from '@barbershop/shared';
 
+type Lang = 'en' | 'hi';
+
+const TRANSLATIONS = {
+  en: {
+    pageTitle: 'Book Appointment',
+    pageSubtitle: 'Select services, preferred barber, and appointment time',
+    step1: 'Services',
+    step2: 'Barber',
+    step3: 'Time Slot',
+    step4: 'Confirm',
+    chooseServices: 'Choose Services',
+    chooseServicesDesc: 'You can select multiple services for your visit',
+    mins: 'mins',
+    selectBarber: 'Select Barber',
+    selectBarberDesc: 'Choose a preferred stylist or any available barber',
+    anyBarber: 'Any Available Barber',
+    anyBarberDesc: 'Fastest booking with any eligible stylist',
+    availableForSelected: 'Available for selected services',
+    cannotPerform: 'Cannot perform one of your selected services',
+    pickDateTime: 'Pick Date & Time',
+    durationLabel: 'Duration',
+    selectDate: 'Select Date',
+    availableSlots: 'Available Time Slots',
+    noOpenSlots: 'No open slots on this date',
+    noSlotsDesc: 'The shop is closed or fully booked. Please choose another date or barber.',
+    reviewConfirm: 'Review & Confirm',
+    reviewConfirmDesc: 'Enter your details to finalize your appointment',
+    dateAndSlot: 'Date & Slot',
+    stylist: 'Stylist',
+    servicesLabel: 'Services',
+    servicesSubtotal: 'Services Subtotal',
+    promoApplied: 'Promo Applied',
+    save: 'Save',
+    estimatedTotalPayable: 'Estimated Total Payable',
+    totalPayableAtShop: 'Total Payable at Shop',
+    havePromo: 'Have a Promo Code?',
+    removePromo: 'Remove',
+    enterPromoPlaceholder: 'Enter promo code (e.g. WELCOME10)',
+    apply: 'Apply',
+    checking: 'Checking...',
+    activePromos: 'Active Promotional Offers (Tap to apply)',
+    off: 'OFF',
+    yourFullName: 'Your Full Name *',
+    namePlaceholder: 'e.g. Rahul Sharma',
+    mobileNumber: 'Mobile Phone Number *',
+    phonePlaceholder: 'e.g. 9876543210',
+    emailAddress: 'Email Address (Optional)',
+    emailPlaceholder: 'e.g. rahul@example.com',
+    groomingNotes: 'Grooming Preferences / Notes',
+    notesPlaceholder: 'e.g. Prefer short crop, fade on sides',
+    confirmAndBook: 'Confirm & Book',
+    confirmingBooking: 'Confirming Booking...',
+    selectedTotal: 'Selected Total',
+    continue: 'Continue',
+    apptConfirmed: 'Appointment Confirmed',
+    bookingNum: 'Booking #',
+    welcomeMsg: 'We look forward to welcoming you!',
+    payNotice: 'Payment is made physically at the shop via Cash or UPI QR scan upon completion.',
+    viewInAccount: 'View in My Appointments',
+    bookAnother: 'Book Another Appointment',
+    at: 'at',
+    assignedOnArrival: 'Assigned on arrival',
+  },
+  hi: {
+    pageTitle: 'अपॉइंटमेंट बुक करें',
+    pageSubtitle: 'सेवाएं, पसंदीदा स्टाइलिस्ट और समय स्लॉट चुनें',
+    step1: 'सेवाएं',
+    step2: 'स्टाइलिस्ट',
+    step3: 'समय',
+    step4: 'पुष्टि',
+    chooseServices: 'सेवाएं चुनें',
+    chooseServicesDesc: 'अपनी पसंद की एक या अधिक सेवाएं चुन सकते हैं',
+    mins: 'मिनट',
+    selectBarber: 'स्टाइलिस्ट चुनें',
+    selectBarberDesc: 'पसंदीदा स्टाइलिस्ट या कोई भी उपलब्ध नाई चुनें',
+    anyBarber: 'कोई भी उपलब्ध स्टाइलिस्ट',
+    anyBarberDesc: 'पहली उपलब्ध कुर्सी • सबसे तेज़ बुकिंग',
+    availableForSelected: 'चयनित सेवाओं के लिए उपलब्ध',
+    cannotPerform: 'चयनित सेवा उपलब्ध नहीं है',
+    pickDateTime: 'तारीख और समय चुनें',
+    durationLabel: 'समय',
+    selectDate: 'तारीख चुनें',
+    availableSlots: 'उपलब्ध समय स्लॉट',
+    noOpenSlots: 'इस तारीख पर कोई स्लॉट उपलब्ध नहीं है',
+    noSlotsDesc: 'सैलून बंद है या पूरी तरह बुक है। कृपया दूसरी तारीख चुनें।',
+    reviewConfirm: 'समीक्षा और पुष्टि',
+    reviewConfirmDesc: 'अपॉइंटमेंट पूरा करने के लिए अपना विवरण दर्ज करें',
+    dateAndSlot: 'तारीख और समय',
+    stylist: 'स्टाइलिस्ट',
+    servicesLabel: 'सेवाएं',
+    servicesSubtotal: 'सेवाओं का उप-कुल',
+    promoApplied: 'प्रोमो कोड लागू',
+    save: 'बचत',
+    estimatedTotalPayable: 'अनुमानित कुल देय',
+    totalPayableAtShop: 'सैलून पर कुल देय',
+    havePromo: 'क्या आपके पास प्रोमो कोड है?',
+    removePromo: 'हटाएं',
+    enterPromoPlaceholder: 'प्रोमो कोड दर्ज करें (उदा. WELCOME10)',
+    apply: 'लागू करें',
+    checking: 'जांच रहे हैं...',
+    activePromos: 'सक्रिय प्रमोशनल ऑफ़र (लागू करने के लिए टैप करें)',
+    off: 'छूट',
+    yourFullName: 'आपका पूरा नाम *',
+    namePlaceholder: 'उदा. राहुल शर्मा',
+    mobileNumber: 'मोबाइल फोन नंबर *',
+    phonePlaceholder: 'उदा. 9876543210',
+    emailAddress: 'ईमेल पता (वैकल्पिक)',
+    emailPlaceholder: 'उदा. rahul@example.com',
+    groomingNotes: 'विशेष निर्देश / पसंद',
+    notesPlaceholder: 'उदा. फेड कट, दाढ़ी ट्रिम',
+    confirmAndBook: 'पुष्टि करें और बुक करें',
+    confirmingBooking: 'बुकिंग की पुष्टि हो रही है...',
+    selectedTotal: 'चुना हुआ कुल',
+    continue: 'आगे बढ़ें',
+    apptConfirmed: 'अपॉइंटमेंट कन्फ़र्म हो गया',
+    bookingNum: 'बुकिंग सं.',
+    welcomeMsg: 'हम आपका स्वागत करने के लिए उत्सुक हैं!',
+    payNotice: 'भुगतान सेवा पूरी होने पर सैलून में नकद या UPI QR द्वारा किया जाता है।',
+    viewInAccount: 'मेरी अपॉइंटमेंट्स देखें',
+    bookAnother: 'एक और अपॉइंटमेंट बुक करें',
+    at: 'को',
+    assignedOnArrival: 'पहुंचने पर निर्धारित',
+  },
+};
+
 function BookingWizardContent() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -28,6 +153,25 @@ function BookingWizardContent() {
   const slug = (params.slug as string) || 'classic-barber';
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [lang, setLang] = useState<Lang>('en');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedLang = localStorage.getItem('barber_booking_lang') as Lang;
+      if (savedLang === 'en' || savedLang === 'hi') {
+        setLang(savedLang);
+      }
+    }
+  }, []);
+
+  const handleLanguageChange = (newLang: Lang) => {
+    setLang(newLang);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('barber_booking_lang', newLang);
+    }
+  };
+
+  const t = TRANSLATIONS[lang];
 
   // Data loaded from API
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -262,29 +406,29 @@ function BookingWizardContent() {
 
             <div>
               <span className="text-xs font-bold tracking-wider text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full uppercase">
-                Appointment Confirmed
+                {t.apptConfirmed}
               </span>
               <h2 className="text-2xl font-black text-slate-900 mt-2">
-                Booking #{confirmedAppointment.appointmentNumber}
+                {t.bookingNum}{confirmedAppointment.appointmentNumber}
               </h2>
-              <p className="text-xs text-slate-500 mt-1">We look forward to welcoming you!</p>
+              <p className="text-xs text-slate-500 mt-1">{t.welcomeMsg}</p>
             </div>
 
             <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-3 border border-slate-100 text-sm">
               <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                <span className="text-slate-500">Date & Time</span>
+                <span className="text-slate-500">{t.dateAndSlot}</span>
                 <span className="font-bold text-slate-800">
-                  {confirmedAppointment.date} at {confirmedAppointment.startTime}
+                  {confirmedAppointment.date} {t.at} {confirmedAppointment.startTime}
                 </span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                <span className="text-slate-500">Stylist</span>
+                <span className="text-slate-500">{t.stylist}</span>
                 <span className="font-bold text-amber-700">
-                  {confirmedAppointment.workerName || 'Assigned on arrival'}
+                  {confirmedAppointment.workerName || t.assignedOnArrival}
                 </span>
               </div>
               <div className="flex justify-between items-start pb-2 border-b border-slate-200">
-                <span className="text-slate-500">Services</span>
+                <span className="text-slate-500">{t.servicesLabel}</span>
                 <div className="text-right">
                   {confirmedAppointment.services.map((s) => (
                     <div key={s.id} className="font-semibold text-slate-800">
@@ -297,13 +441,13 @@ function BookingWizardContent() {
                 <div className="flex justify-between items-center pb-2 border-b border-slate-200 text-emerald-700">
                   <span className="flex items-center gap-1 font-medium">
                     <Tag className="w-3.5 h-3.5" />
-                    Promo Applied ({appliedCoupon.code})
+                    {t.promoApplied} ({appliedCoupon.code})
                   </span>
-                  <span className="font-bold">Save {formatINR(appliedCoupon.discountPaise)}</span>
+                  <span className="font-bold">{t.save} {formatINR(appliedCoupon.discountPaise)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-1 text-base">
-                <span className="font-bold text-slate-900">Total Payable at Shop</span>
+                <span className="font-bold text-slate-900">{t.totalPayableAtShop}</span>
                 <div className="text-right">
                   {appliedCoupon && (
                     <span className="text-xs text-slate-400 line-through mr-1.5">
@@ -318,7 +462,7 @@ function BookingWizardContent() {
             </div>
 
             <p className="text-xs text-slate-400">
-              Payment is made physically at the shop via Cash or UPI QR scan upon completion.
+              {t.payNotice}
             </p>
 
             <div className="pt-2 flex flex-col gap-2.5">
@@ -326,7 +470,7 @@ function BookingWizardContent() {
                 href="/my-account"
                 className="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-center shadow-md shadow-amber-600/20 active:scale-95 transition"
               >
-                View in My Appointments
+                {t.viewInAccount}
               </Link>
               <button
                 onClick={() => {
@@ -338,7 +482,7 @@ function BookingWizardContent() {
                 }}
                 className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition"
               >
-                Book Another Appointment
+                {t.bookAnother}
               </button>
             </div>
           </div>
@@ -353,13 +497,41 @@ function BookingWizardContent() {
       <CustomerNavbar slug={slug} />
 
       <main className="max-w-xl mx-auto px-4 py-6">
+        {/* Top Header with Language Switcher */}
+        <div className="flex items-center justify-between mb-5 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div>
+            <h1 className="text-base font-black text-slate-900 leading-tight">{t.pageTitle}</h1>
+            <p className="text-[11px] text-slate-500">{t.pageSubtitle}</p>
+          </div>
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-full border border-slate-200">
+            <button
+              type="button"
+              onClick={() => handleLanguageChange('en')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-full transition-all ${
+                lang === 'en' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLanguageChange('hi')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-full transition-all ${
+                lang === 'hi' ? 'bg-amber-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              हिन्दी
+            </button>
+          </div>
+        </div>
+
         {/* Progress Tracker */}
         <div className="mb-6">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2">
-            <span className={step >= 1 ? 'text-amber-700' : ''}>1. Services</span>
-            <span className={step >= 2 ? 'text-amber-700' : ''}>2. Barber</span>
-            <span className={step >= 3 ? 'text-amber-700' : ''}>3. Time Slot</span>
-            <span className={step >= 4 ? 'text-amber-700' : ''}>4. Confirm</span>
+            <span className={step >= 1 ? 'text-amber-700' : ''}>1. {t.step1}</span>
+            <span className={step >= 2 ? 'text-amber-700' : ''}>2. {t.step2}</span>
+            <span className={step >= 3 ? 'text-amber-700' : ''}>3. {t.step3}</span>
+            <span className={step >= 4 ? 'text-amber-700' : ''}>4. {t.step4}</span>
           </div>
           <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden flex">
             <div
@@ -380,8 +552,8 @@ function BookingWizardContent() {
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Choose Services</h2>
-              <p className="text-xs text-slate-500">You can select multiple services for your visit</p>
+              <h2 className="text-xl font-bold text-slate-900">{t.chooseServices}</h2>
+              <p className="text-xs text-slate-500">{t.chooseServicesDesc}</p>
             </div>
 
             {loading ? (
@@ -420,7 +592,7 @@ function BookingWizardContent() {
                             <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">{svc.description}</p>
                           )}
                           <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-                            <span>{svc.durationMinutes} mins</span>
+                            <span>{svc.durationMinutes} {t.mins}</span>
                           </div>
                         </div>
                       </div>
@@ -440,8 +612,8 @@ function BookingWizardContent() {
         {step === 2 && (
           <div className="space-y-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Select Barber</h2>
-              <p className="text-xs text-slate-500">Choose a preferred stylist or any available barber</p>
+              <h2 className="text-xl font-bold text-slate-900">{t.selectBarber}</h2>
+              <p className="text-xs text-slate-500">{t.selectBarberDesc}</p>
             </div>
 
             <div className="space-y-2.5">
@@ -459,8 +631,8 @@ function BookingWizardContent() {
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm text-slate-900">Any Available Barber</h3>
-                    <p className="text-xs text-slate-500">Fastest booking with any eligible stylist</p>
+                    <h3 className="font-bold text-sm text-slate-900">{t.anyBarber}</h3>
+                    <p className="text-xs text-slate-500">{t.anyBarberDesc}</p>
                   </div>
                 </div>
                 {selectedWorkerId === 'any' && (
@@ -497,7 +669,7 @@ function BookingWizardContent() {
                       <div>
                         <h3 className="font-bold text-sm text-slate-900">{worker.displayName}</h3>
                         <p className="text-[11px] text-slate-500">
-                          {canPerform ? 'Available for selected services' : 'Cannot perform one of your selected services'}
+                          {canPerform ? t.availableForSelected : t.cannotPerform}
                         </p>
                       </div>
                     </div>
@@ -513,15 +685,15 @@ function BookingWizardContent() {
         {step === 3 && (
           <div className="space-y-5">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Pick Date & Time</h2>
+              <h2 className="text-xl font-bold text-slate-900">{t.pickDateTime}</h2>
               <p className="text-xs text-slate-500">
-                Duration: {totalDurationMinutes} mins total
+                {t.durationLabel}: {totalDurationMinutes} {t.mins}
               </p>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase">
-                Select Date
+                {t.selectDate}
               </label>
               <input
                 type="date"
@@ -534,7 +706,7 @@ function BookingWizardContent() {
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-2 uppercase">
-                Available Time Slots
+                {t.availableSlots}
               </label>
 
               {slotsLoading ? (
@@ -546,8 +718,8 @@ function BookingWizardContent() {
               ) : slots.length === 0 ? (
                 <div className="p-6 bg-white rounded-2xl border border-slate-200 text-center text-xs text-slate-500 space-y-1">
                   <Clock className="w-6 h-6 mx-auto text-slate-400 mb-1" />
-                  <p className="font-semibold text-slate-700">No open slots on this date</p>
-                  <p>The shop is closed or fully booked. Please choose another date or barber.</p>
+                  <p className="font-semibold text-slate-700">{t.noOpenSlots}</p>
+                  <p>{t.noSlotsDesc}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -578,45 +750,45 @@ function BookingWizardContent() {
         {step === 4 && (
           <form onSubmit={handleBook} className="space-y-4">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Review & Confirm</h2>
-              <p className="text-xs text-slate-500">Enter your details to finalize your appointment</p>
+              <h2 className="text-xl font-bold text-slate-900">{t.reviewConfirm}</h2>
+              <p className="text-xs text-slate-500">{t.reviewConfirmDesc}</p>
             </div>
 
             {/* Booking Summary Box */}
             <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-4 space-y-2 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-500">Date & Slot:</span>
-                <span className="font-bold text-slate-900">{selectedDate} at {selectedTime}</span>
+                <span className="text-slate-500">{t.dateAndSlot}:</span>
+                <span className="font-bold text-slate-900">{selectedDate} {t.at} {selectedTime}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Stylist:</span>
+                <span className="text-slate-500">{t.stylist}:</span>
                 <span className="font-bold text-amber-800">
                   {selectedWorkerId === 'any'
-                    ? 'Any Available Barber'
+                    ? t.anyBarber
                     : workers.find((w) => w.id === selectedWorkerId)?.displayName}
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Services ({selectedServices.length}):</span>
+                <span className="text-slate-500">{t.servicesLabel} ({selectedServices.length}):</span>
                 <span className="font-semibold text-slate-800 text-right">
                   {selectedServices.map((s) => s.name).join(', ')}
                 </span>
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Services Subtotal:</span>
+                <span>{t.servicesSubtotal}:</span>
                 <span className="font-bold">{formatINR(totalAmountPaise)}</span>
               </div>
               {appliedCoupon && (
                 <div className="flex justify-between text-emerald-700 font-semibold items-center">
                   <span className="flex items-center gap-1.5">
                     <Tag className="w-3.5 h-3.5" />
-                    <span>Promo ({appliedCoupon.code})</span>
+                    <span>{t.promoApplied} ({appliedCoupon.code})</span>
                   </span>
                   <span>-{formatINR(discountPaise)}</span>
                 </div>
               )}
               <div className="pt-2 border-t border-amber-200/80 flex justify-between text-sm font-bold text-slate-900">
-                <span>Estimated Total Payable:</span>
+                <span>{t.estimatedTotalPayable}:</span>
                 <div className="text-right">
                   {appliedCoupon && (
                     <span className="text-xs text-slate-400 line-through mr-1.5 font-normal">
@@ -633,7 +805,7 @@ function BookingWizardContent() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                   <Tag className="w-4 h-4 text-amber-600" />
-                  Have a Promo Code?
+                  {t.havePromo}
                 </span>
                 {appliedCoupon && (
                   <button
@@ -642,7 +814,7 @@ function BookingWizardContent() {
                     className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-0.5"
                   >
                     <X className="w-3.5 h-3.5" />
-                    Remove
+                    {t.removePromo}
                   </button>
                 )}
               </div>
@@ -651,7 +823,7 @@ function BookingWizardContent() {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="ENTER CODE (e.g. WELCOME10)"
+                    placeholder={t.enterPromoPlaceholder}
                     value={couponCodeInput}
                     onChange={(e) => {
                       setCouponCodeInput(e.target.value.toUpperCase());
@@ -665,7 +837,7 @@ function BookingWizardContent() {
                     onClick={() => handleApplyCoupon()}
                     className="px-4 py-2 bg-slate-900 hover:bg-black disabled:bg-slate-300 text-white text-xs font-bold rounded-xl transition active:scale-95 shadow-sm"
                   >
-                    {validatingCoupon ? 'Checking...' : 'Apply'}
+                    {validatingCoupon ? t.checking : t.apply}
                   </button>
                 </div>
               ) : (
@@ -674,7 +846,7 @@ function BookingWizardContent() {
                     <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="font-semibold">{appliedCoupon.message}</span>
                   </div>
-                  <span className="font-bold text-emerald-700">Save {formatINR(discountPaise)}</span>
+                  <span className="font-bold text-emerald-700">{t.save} {formatINR(discountPaise)}</span>
                 </div>
               )}
 
@@ -689,7 +861,7 @@ function BookingWizardContent() {
               {!appliedCoupon && availableOffers.length > 0 && (
                 <div className="pt-1">
                   <span className="text-[11px] font-semibold text-slate-400 block mb-1.5 uppercase tracking-wider">
-                    Available Offers
+                    {t.activePromos}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {availableOffers.map((offer) => (
@@ -704,7 +876,7 @@ function BookingWizardContent() {
                       >
                         <span className="font-bold font-mono text-[11px]">{offer.code}</span>
                         <span className="text-amber-700 text-[10px]">
-                          ({offer.discountType === 'percentage' ? `${offer.discountValue}% OFF` : `₹${(offer.discountValue / 100).toFixed(0)} OFF`})
+                          ({offer.discountType === 'percentage' ? `${offer.discountValue}% ${t.off}` : `₹${(offer.discountValue / 100).toFixed(0)} ${t.off}`})
                         </span>
                       </button>
                     ))}
@@ -715,11 +887,11 @@ function BookingWizardContent() {
 
             <div className="space-y-3 pt-1">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Your Full Name *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.yourFullName}</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Rahul Sharma"
+                  placeholder={t.namePlaceholder}
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -727,11 +899,11 @@ function BookingWizardContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Mobile Phone Number *</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.mobileNumber}</label>
                 <input
                   type="tel"
                   required
-                  placeholder="e.g. 9876543210"
+                  placeholder={t.phonePlaceholder}
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -739,10 +911,10 @@ function BookingWizardContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address (Optional)</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.emailAddress}</label>
                 <input
                   type="email"
-                  placeholder="e.g. rahul@example.com"
+                  placeholder={t.emailPlaceholder}
                   value={customerEmail}
                   onChange={(e) => setCustomerEmail(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -750,10 +922,10 @@ function BookingWizardContent() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Grooming Preferences / Notes</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">{t.groomingNotes}</label>
                 <textarea
                   rows={2}
-                  placeholder="e.g. Prefer short crop, fade on sides"
+                  placeholder={t.notesPlaceholder}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -766,7 +938,7 @@ function BookingWizardContent() {
               disabled={submitting}
               className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 text-center transition active:scale-95"
             >
-              {submitting ? 'Confirming Booking...' : `Confirm & Book (${formatINR(estimatedPayablePaise)})`}
+              {submitting ? t.confirmingBooking : `${t.confirmAndBook} (${formatINR(estimatedPayablePaise)})`}
             </button>
           </form>
         )}
@@ -776,11 +948,11 @@ function BookingWizardContent() {
           <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-slate-200 p-3.5 shadow-lg">
             <div className="max-w-xl mx-auto flex items-center justify-between">
               <div>
-                <span className="text-[11px] text-slate-400 block font-medium">Selected Total</span>
+                <span className="text-[11px] text-slate-400 block font-medium">{t.selectedTotal}</span>
                 <span className="font-extrabold text-base text-slate-900">
                   {formatINR(totalAmountPaise)}
                 </span>
-                <span className="text-[11px] text-slate-500 ml-1.5">({totalDurationMinutes} mins)</span>
+                <span className="text-[11px] text-slate-500 ml-1.5">({totalDurationMinutes} {t.mins})</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -803,7 +975,7 @@ function BookingWizardContent() {
                   onClick={() => setStep((s) => (s + 1) as any)}
                   className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm rounded-xl transition active:scale-95 flex items-center gap-1"
                 >
-                  <span>Continue</span>
+                  <span>{t.continue}</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
