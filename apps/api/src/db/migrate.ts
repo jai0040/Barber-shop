@@ -10,7 +10,11 @@ const APPEND_ONLY = ['audit_logs', 'appointment_status_history', 'customer_loyal
 const NO_DELETE = ['appointments', 'appointment_services', 'customer_memberships', 'worker_salary_settlements'];
 
 export async function migrate(ownerUrl: string, appUrl: string, log: (m: string) => void = console.log) {
-  const c = new Client({ connectionString: ownerUrl });
+  const isLocal = ownerUrl.includes('localhost') || ownerUrl.includes('127.0.0.1');
+  const c = new Client({
+    connectionString: ownerUrl,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  });
   await c.connect();
   try {
     await c.query('CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');

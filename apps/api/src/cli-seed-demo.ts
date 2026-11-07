@@ -6,13 +6,18 @@ import { hashPassword } from './auth/auth.service';
 const port = Number(process.env.DB_PORT || 5432);
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.DATABASE_URL = process.env.DATABASE_URL || `postgresql://barber_app:apppw@localhost:${port}/postgres`;
-process.env.MIGRATION_DATABASE_URL = process.env.MIGRATION_DATABASE_URL || `postgresql://postgres:pw@localhost:${port}/postgres`;
+process.env.MIGRATION_DATABASE_URL = process.env.MIGRATION_DATABASE_URL || process.env.DATABASE_URL || `postgresql://postgres:pw@localhost:${port}/postgres`;
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'dev-access-secret-32-chars-minimum-key!!';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-32-chars-minimum-key!!';
 
 async function seed() {
   const cfg = loadConfig();
-  const pool = new Pool({ connectionString: cfg.MIGRATION_DATABASE_URL });
+  const connStr = cfg.MIGRATION_DATABASE_URL || cfg.DATABASE_URL;
+  const isLocal = connStr.includes('localhost') || connStr.includes('127.0.0.1');
+  const pool = new Pool({
+    connectionString: connStr,
+    ssl: isLocal ? false : { rejectUnauthorized: false },
+  });
 
   try {
     await pool.query("SET client_encoding = 'UTF8'");
