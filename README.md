@@ -322,6 +322,13 @@ Or manually via Docker Compose:
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
+### 🚀 1-Click Live Cloud Deployment via GitHub (Render Blueprint)
+The platform includes an Infrastructure Blueprint (`render.yaml`) configured for instant cloud deployment connected directly to your GitHub repository:
+1. Go to [render.com](https://render.com) and log in with your GitHub account (`jai0040`).
+2. Click **New +** $\rightarrow$ **Blueprint** and select repository `Barber-shop`.
+3. Click **Apply Blueprint** — Render automatically provisions the PostgreSQL 16 database (`barber-db`), runs database migrations, seeds initial business records, and launches the live API and web portal with free SSL/HTTPS certificates and automatic CI/CD deployment on every Git push!
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for full deployment instructions.
+
 ---
 
 ## 📐 Technical Decisions Reference
