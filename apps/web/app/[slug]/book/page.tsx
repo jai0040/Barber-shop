@@ -15,6 +15,8 @@ import {
   Sparkles,
   Tag,
   X,
+  Download,
+  CalendarPlus,
 } from 'lucide-react';
 import CustomerNavbar from '@/components/customer/Navbar';
 import CustomerBottomNav from '@/components/customer/BottomNav';
@@ -83,6 +85,8 @@ const TRANSLATIONS = {
     bookAnother: 'Book Another Appointment',
     at: 'at',
     assignedOnArrival: 'Assigned on arrival',
+    addToGoogleCalendar: 'Add to Google Calendar',
+    downloadIcs: 'Download Calendar (.ics)',
   },
   hi: {
     pageTitle: 'अपॉइंटमेंट बुक करें',
@@ -143,6 +147,8 @@ const TRANSLATIONS = {
     bookAnother: 'एक और अपॉइंटमेंट बुक करें',
     at: 'को',
     assignedOnArrival: 'पहुंचने पर निर्धारित',
+    addToGoogleCalendar: 'गूगल कैलेंडर में जोड़ें',
+    downloadIcs: 'कैलेंडर फाइल (.ics) डाउनलोड करें',
   },
 };
 
@@ -464,6 +470,67 @@ function BookingWizardContent() {
             <p className="text-xs text-slate-400">
               {t.payNotice}
             </p>
+
+            {/* Calendar Integration */}
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <a
+                href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+                  `Haircut & Grooming (${confirmedAppointment.workerName || 'Barber'})`
+                )}&dates=${confirmedAppointment.date.replace(/-/g, '')}T${confirmedAppointment.startTime.replace(
+                  /:/g,
+                  ''
+                )}00/${confirmedAppointment.date.replace(/-/g, '')}T${(
+                  confirmedAppointment.endTime || confirmedAppointment.startTime
+                ).replace(/:/g, '')}00&details=${encodeURIComponent(
+                  `Appointment #${confirmedAppointment.appointmentNumber}\nStylist: ${
+                    confirmedAppointment.workerName || t.assignedOnArrival
+                  }\nServices: ${confirmedAppointment.services.map((s) => s.serviceName).join(', ')}`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="py-2 px-3 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-sm hover:bg-slate-50"
+              >
+                <CalendarPlus className="w-3.5 h-3.5 text-amber-600" />
+                <span className="truncate">{t.addToGoogleCalendar}</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const startStr = `${confirmedAppointment.date.replace(/-/g, '')}T${confirmedAppointment.startTime.replace(/:/g, '')}00`;
+                  const endStr = `${confirmedAppointment.date.replace(/-/g, '')}T${(confirmedAppointment.endTime || confirmedAppointment.startTime).replace(/:/g, '')}00`;
+                  const icsData = [
+                    'BEGIN:VCALENDAR',
+                    'VERSION:2.0',
+                    'PRODID:-//BarberPro//Booking//EN',
+                    'CALSCALE:GREGORIAN',
+                    'METHOD:PUBLISH',
+                    'BEGIN:VEVENT',
+                    `SUMMARY:Haircut Appointment #${confirmedAppointment.appointmentNumber}`,
+                    `DESCRIPTION:Services: ${confirmedAppointment.services.map((s) => s.serviceName).join(', ')} | Stylist: ${confirmedAppointment.workerName || t.assignedOnArrival}`,
+                    `DTSTART:${startStr}`,
+                    `DTEND:${endStr}`,
+                    'STATUS:CONFIRMED',
+                    'END:VEVENT',
+                    'END:VCALENDAR',
+                  ].join('\r\n');
+
+                  const blob = new Blob([icsData], { type: 'text/calendar;charset=utf-8' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.setAttribute('download', `barber-appointment-${confirmedAppointment.appointmentNumber}.ics`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  URL.revokeObjectURL(url);
+                }}
+                className="py-2 px-3 bg-white border border-slate-300 hover:border-slate-400 text-slate-700 font-medium rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow-sm hover:bg-slate-50"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-500" />
+                <span className="truncate">{t.downloadIcs}</span>
+              </button>
+            </div>
 
             <div className="pt-2 flex flex-col gap-2.5">
               <Link

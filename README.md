@@ -18,7 +18,8 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Append-only status audit log with timestamps and notes.
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
   - Customer self-service online cancellation & rescheduling (`/my-account` -> `POST /me/shops/:slug/appointments/:id/cancel` and `POST /me/shops/:slug/appointments/:id/reschedule`) enforcing the shop's configurable cancellation cooldown window (`cancellation_cooldown_hours`), automatically releasing the booked chair slot, maintaining `rescheduled_from_id` audit lineage, updating status history, and dispatching in-app alerts to salon staff.
-  - Real-time Server-Sent Events (SSE) live queue updates (`GET /api/v1/events/stream`) streaming chair status changes (`checked_in`, `in_service`, `completed`), walk-ins, reschedules, and add-ons directly to the Barber Mobile Station (`/worker`) and Admin Dashboard (`/admin/dashboard`) with visual LIVE badges and toast notifications.
+  - Real-time Server-Sent Events (SSE) live queue updates (`GET /api/v1/events/stream`) streaming chair status changes (`checked_in`, `in_service`, `completed`), walk-ins, reschedules, and add-ons directly to the Barber Mobile Station (`/worker`) and Admin Dashboard (`/admin/dashboard`) with visual LIVE badges, toast notifications, and zero-dependency Web Audio API synthesized harmonic audio chimes (`apps/web/lib/audio.ts`) with mute controls.
+  - 1-click **Add to Google Calendar** and **Download Calendar (.ics)** integrations directly on customer booking confirmation receipts (`/[slug]/book`).
   - Automated upcoming appointment reminder dispatch engine (`POST /appointments/dispatch-reminders`) and 1-click admin trigger (`/admin/appointments`) broadcasting in-app and WhatsApp reminders for appointments within upcoming service windows.
   - Walk-in support with admin barber assignment.
 

@@ -19,7 +19,10 @@ import {
   RefreshCw,
   ChevronRight,
   Package,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import { playNotificationChime, isSoundEnabled, setSoundEnabled } from '@/lib/audio';
 
 interface NormalizedDashboardData {
   metrics: {
@@ -69,6 +72,7 @@ export default function AdminDashboardPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [liveAlertMessage, setLiveAlertMessage] = useState<string | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
 
   async function loadDashboard() {
     try {
@@ -191,6 +195,7 @@ export default function AdminDashboardPage() {
   }
 
   useEffect(() => {
+    setSoundOn(isSoundEnabled());
     loadDashboard();
 
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -214,6 +219,7 @@ export default function AdminDashboardPage() {
           if (payload.type === 'ping' || payload.type === 'heartbeat') return;
 
           refreshDashboardSilently();
+          playNotificationChime();
 
           let msg = 'Dashboard metrics updated in real-time';
           const d = payload.data?.data || payload.data || {};
@@ -275,6 +281,22 @@ export default function AdminDashboardPage() {
               LIVE
             </span>
           )}
+          <button
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              setSoundEnabled(next);
+              if (next) playNotificationChime();
+            }}
+            className={`p-2.5 rounded-xl border transition-colors ${
+              soundOn
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400'
+            }`}
+            title={soundOn ? 'Sound alerts: ON (click to mute)' : 'Sound alerts: MUTED (click to enable)'}
+          >
+            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
           <button
             onClick={loadDashboard}
             disabled={loading}

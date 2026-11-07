@@ -19,7 +19,10 @@ import {
   X,
   Phone,
   FileText,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import { playNotificationChime, isSoundEnabled, setSoundEnabled } from '@/lib/audio';
 
 interface WorkerDashboardData {
   worker: {
@@ -59,6 +62,7 @@ export default function WorkerMobilePage() {
   const [error, setError] = useState<string | null>(null);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [liveAlertMessage, setLiveAlertMessage] = useState<string | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
 
   // Salary advance modal
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -79,6 +83,7 @@ export default function WorkerMobilePage() {
       return;
     }
     setSession(s);
+    setSoundOn(isSoundEnabled());
     loadWorkerDashboard();
     loadServices();
   }, [router]);
@@ -147,6 +152,7 @@ export default function WorkerMobilePage() {
           if (payload.type === 'ping' || payload.type === 'heartbeat') return;
 
           refreshQueueSilently();
+          playNotificationChime();
 
           let msg = 'Live queue updated';
           const d = payload.data?.data || payload.data || {};
@@ -336,6 +342,22 @@ export default function WorkerMobilePage() {
               <LayoutDashboard className="w-4 h-4" />
             </Link>
           )}
+          <button
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              setSoundEnabled(next);
+              if (next) playNotificationChime();
+            }}
+            className={`p-2 rounded-xl border transition ${
+              soundOn
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
+                : 'bg-slate-800 border-slate-700/60 text-slate-500 hover:text-slate-400'
+            }`}
+            title={soundOn ? 'Sound alerts: ON (click to mute)' : 'Sound alerts: MUTED (click to enable)'}
+          >
+            {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
           <button
             onClick={loadWorkerDashboard}
             disabled={loading}
