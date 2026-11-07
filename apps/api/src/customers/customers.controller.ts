@@ -9,6 +9,7 @@ import { MembershipsService } from '../memberships/memberships.service';
 import { ErrorCodes } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { createCustomerSchema, listCustomersSchema, selfUpdateSchema, updateCustomerSchema } from './customers.schemas';
+import { rescheduleMyAppointmentSchema, RescheduleMyAppointmentDto } from '../appointments/appointments.schemas';
 
 const ID = () => Param('id', ParseUUIDPipe);
 
@@ -79,5 +80,19 @@ export class MyCustomerController {
     const custId = await this.svc.myCustomerId(ctx, shopId);
     if (!custId) throw new AppException(403, ErrorCodes.FORBIDDEN, 'Customer profile required to cancel appointments.');
     return this.svc.cancelMyAppointment(ctx, shopId, custId, id, dto?.reason);
+  }
+
+  @Post('appointments/:id/reschedule')
+  @HttpCode(200)
+  async rescheduleMyAppointment(
+    @Auth() ctx: AuthContext,
+    @Param('slug', new ZodValidationPipe(slugParam)) slug: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rescheduleMyAppointmentSchema)) dto: RescheduleMyAppointmentDto
+  ) {
+    const shopId = await this.svc.shopBySlug(slug);
+    const custId = await this.svc.myCustomerId(ctx, shopId);
+    if (!custId) throw new AppException(403, ErrorCodes.FORBIDDEN, 'Customer profile required to reschedule appointments.');
+    return this.svc.rescheduleMyAppointment(ctx, shopId, custId, id, dto);
   }
 }

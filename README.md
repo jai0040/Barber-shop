@@ -16,7 +16,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Immutable service price & duration snapshots at time of booking.
   - Append-only status audit log with timestamps and notes.
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
-  - Customer self-service online cancellation (`/my-account` -> `POST /me/shops/:slug/appointments/:id/cancel`) enforcing the shop's configurable cancellation cooldown window (`cancellation_cooldown_hours`), automatically releasing the booked chair slot, updating status history, and dispatching in-app alerts to salon staff.
+  - Customer self-service online cancellation & rescheduling (`/my-account` -> `POST /me/shops/:slug/appointments/:id/cancel` and `POST /me/shops/:slug/appointments/:id/reschedule`) enforcing the shop's configurable cancellation cooldown window (`cancellation_cooldown_hours`), automatically releasing the booked chair slot, maintaining `rescheduled_from_id` audit lineage, updating status history, and dispatching in-app alerts to salon staff.
   - Automated upcoming appointment reminder dispatch engine (`POST /appointments/dispatch-reminders`) and 1-click admin trigger (`/admin/appointments`) broadcasting in-app and WhatsApp reminders for appointments within upcoming service windows.
   - Walk-in support with admin barber assignment.
 
@@ -272,7 +272,7 @@ Verify full system health, live database readiness, worker queues, owner reports
 npm run smoke-test
 ```
 
-### Test Coverage (100% Passing — 318 / 318 Tests across 22 Suites)
+### Test Coverage (100% Passing — 321 / 321 Tests across 22 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `attendance-salary.test.ts` — Shift clock-in/out, historical overrides, base salary configuration, advance approvals, pro-rated payroll calculation, automatic expense logging, and cross-shop isolation.
@@ -282,7 +282,7 @@ npm run smoke-test
 7. `catalog.test.ts` — Service categories, integer paise validation, price history audit, active/archived state, public catalog grouping.
 8. `commission-payroll.test.ts` — Service & product commission auto-accrual, POS checkout tips, payout settlements, ledger reversals upon voiding, RBAC `own` scope enforcement, and tenant isolation.
 9. `coupons-offers.test.ts` — Promotional coupon validation, percentage caps & flat discounts, category-scoped rules, usage limits, per-customer caps, and immutable ledger reversal upon voiding.
-10. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile.
+10. `customers.test.ts` — E.164 phone normalization, pending account linking, owner/manager vs worker "own" scope, self-service profile, cancellation cooldown, and atomic self-service rescheduling.
 11. `eligibility.test.ts` — Real-time worker capability matching, timezone-aware boundaries, multi-service duration checking, public barbers endpoint.
 12. `loyalty-memberships.test.ts` — Loyalty settings, balance summaries, manual points adjustments, POS checkout point redemptions, VIP membership creation, subscription management, complimentary quota tracking, and multi-tenant isolation.
 13. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, outbound webhook dispatch & HMAC-SHA256 signature ping testing, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.

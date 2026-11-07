@@ -161,7 +161,7 @@ export class AvailabilityService {
           `SELECT worker_id, start_time::text, end_time::text
            FROM appointments
            WHERE shop_id = $1 AND worker_id = ANY($2::uuid[]) AND date = $3::date
-             AND status NOT IN ('cancelled', 'no_show')`,
+             AND status IN ('booked', 'confirmed', 'checked_in', 'in_service')`,
           [shop.id, candidateWorkerIds, query.date]
         )).rows;
 

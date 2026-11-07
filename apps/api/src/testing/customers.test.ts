@@ -282,3 +282,88 @@ describe('5: DATABASE-LEVEL guarantees', () => {
     for (const x of ['customer.create', 'customer.update', 'customer.archive', 'customer.restore', 'customer.join', 'customer.profile.update', 'customer.link.request', 'customer.link.approve', 'customer.link.reject']) assert.ok(a.has(x), x);
   });
 });
+
+describe('5: Customer Self-Service Rescheduling & Cancellation', () => {
+  let aptId: string;
+  const d = new Date();
+  d.setDate(d.getDate() + 5);
+  const futureDate = d.toISOString().slice(0, 10);
+
+  it('customer can reschedule an active appointment to a new date/time slot', async () => {
+    // Set up shop hours and worker capabilities
+    for (let wd = 1; wd <= 7; wd++) {
+      await h.ownerPool.query(
+        `INSERT INTO shop_hours (shop_id, weekday, is_closed, open_time, close_time)
+         VALUES ($1, $2, false, '09:00'::time, '21:00'::time)
+         ON CONFLICT (shop_id, weekday) DO UPDATE SET is_closed = false, open_time = '09:00', close_time = '21:00'`,
+        [ID.shopA, wd]
+      );
+    }
+    await call('PUT', `/workers/${W.Rahul}/services`, T.ownerA, { ids: [S.haircut] });
+    await call('PUT', `/workers/${W.Rahul}/schedule`, T.ownerA, {
+      schedule: [1, 2, 3, 4, 5, 6, 7].map((w) => ({ weekday: w, isWorking: true, startTime: '09:00', endTime: '21:00' })),
+    });
+
+    // 1. Create appointment for Jay
+    const custApt = await call('POST', '/appointments/public/classic/book', undefined, {
+      name: 'Jay Patel',
+      phone: '9876543210',
+      date: futureDate,
+      startTime: '10:00',
+      serviceIds: [S.haircut],
+      workerId: W.Rahul,
+      notes: 'Initial booking',
+    });
+    if (custApt.status !== 201) console.error('custApt failed:', custApt.status, custApt.body);
+    assert.equal(custApt.status, 201);
+    aptId = custApt.body.data.id;
+
+    // 2. Customer reschedules to 14:00
+    const res = await call('POST', `/me/shops/classic/appointments/${aptId}/reschedule`, T.jay, {
+      date: futureDate,
+      startTime: '14:00',
+      workerId: W.Rahul,
+      reason: 'Work schedule shifted',
+    });
+    if (res.status !== 200) console.error('res failed:', res.status, res.body);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.status, 'booked');
+    assert.equal(res.body.data.oldAppointmentId, aptId);
+    assert.ok(res.body.data.newAppointmentId);
+    assert.equal(res.body.data.startTime, '14:00');
+
+    // 3. Verify old appointment is now 'rescheduled' and freed
+    const oldCheck = await call('GET', `/appointments/${aptId}`, T.ownerA);
+    assert.equal(oldCheck.body.data.status, 'rescheduled');
+
+    // 4. Old slot (10:00) is now free to be booked
+    const rebookSlot = await call('POST', '/appointments/public/classic/book', undefined, {
+      name: 'Another Client',
+      phone: '9400000099',
+      date: futureDate,
+      startTime: '10:00',
+      serviceIds: [S.haircut],
+      workerId: W.Rahul,
+    });
+    if (rebookSlot.status !== 201) console.error('rebookSlot failed:', rebookSlot.status, rebookSlot.body);
+    assert.equal(rebookSlot.status, 201);
+  });
+
+  it('rejects rescheduling an already rescheduled appointment', async () => {
+    const res = await call('POST', `/me/shops/classic/appointments/${aptId}/reschedule`, T.jay, {
+      date: futureDate,
+      startTime: '16:00',
+    });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.message.includes('Cannot reschedule an appointment that is already rescheduled'));
+  });
+
+  it('rejects cross-customer reschedule attempt', async () => {
+    // Maya cannot reschedule Jay's new appointment
+    const res = await call('POST', `/me/shops/classic/appointments/${aptId}/reschedule`, T.maya, {
+      date: futureDate,
+      startTime: '16:00',
+    });
+    assert.equal(res.status, 403);
+  });
+});

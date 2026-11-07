@@ -5,6 +5,7 @@ import { AppException } from '../common/app-exception';
 import { AuthContext, Effective } from '../common/types';
 import { Db, isUniqueViolation } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { RescheduleMyAppointmentDto } from '../appointments/appointments.schemas';
 
 const nf = (what = 'Customer') => new AppException(404, ErrorCodes.NOT_FOUND, `${what} not found.`);
 const conflict = (m: string, details?: unknown) => new AppException(409, ErrorCodes.CONFLICT, m, details);
@@ -297,7 +298,7 @@ export class CustomersService {
            FROM appointments a
            LEFT JOIN customers c ON c.id = a.customer_id
            LEFT JOIN workers w ON w.id = a.worker_id
-           WHERE a.id = $1 AND a.shop_id = $2 FOR UPDATE`,
+           WHERE a.id = $1 AND a.shop_id = $2 FOR UPDATE OF a`,
           [appointmentId, shopId]
         )
       ).rows[0];
@@ -377,6 +378,192 @@ export class CustomersService {
         id: appointmentId,
         status: 'cancelled',
         message: 'Appointment cancelled successfully.',
+      };
+    });
+  }
+
+  async rescheduleMyAppointment(
+    ctx: AuthContext,
+    shopId: string,
+    customerId: string,
+    appointmentId: string,
+    dto: RescheduleMyAppointmentDto
+  ) {
+    return this.db.tenant({ shopId }, async (c) => {
+      const shop = (await c.query('SELECT id, name, phone, settings FROM shops WHERE id = $1', [shopId])).rows[0];
+      if (!shop) throw nf('Shop');
+
+      const apt = (
+        await c.query(
+          `SELECT a.*, c.name as customer_name, c.phone as customer_phone, w.display_name as worker_name, w.user_id as worker_user_id
+           FROM appointments a
+           LEFT JOIN customers c ON c.id = a.customer_id
+           LEFT JOIN workers w ON w.id = a.worker_id
+           WHERE a.id = $1 AND a.shop_id = $2 FOR UPDATE OF a`,
+          [appointmentId, shopId]
+        )
+      ).rows[0];
+
+      if (!apt) throw nf('Appointment');
+      if (apt.customer_id !== customerId) {
+        throw forbid('You can only reschedule your own appointments.');
+      }
+
+      if (apt.status === 'completed' || apt.status === 'cancelled' || apt.status === 'in_service' || apt.status === 'rescheduled') {
+        throw bad(`Cannot reschedule an appointment that is already ${apt.status}.`);
+      }
+
+      // Check cancellation / rescheduling cooldown policy
+      const cooldownHours = shop.settings?.cancellation_cooldown_hours ?? 24;
+      const startTimeMs = new Date(apt.start_at).getTime();
+      const nowMs = Date.now();
+      const diffHours = (startTimeMs - nowMs) / (1000 * 60 * 60);
+
+      if (cooldownHours > 0 && diffHours < cooldownHours) {
+        throw bad(
+          `Appointments can only be rescheduled at least ${cooldownHours} hour(s) before the scheduled time. Please contact ${shop.name}${shop.phone ? ` at ${shop.phone}` : ''} directly.`
+        );
+      }
+
+      // Retrieve existing snapshot services for this appointment
+      const svcRows = (
+        await c.query(
+          `SELECT service_id, service_name, unit_price_paise, duration_minutes, price_paise, name_snapshot
+           FROM appointment_services
+           WHERE appointment_id = $1 AND shop_id = $2 AND removed_at IS NULL`,
+          [appointmentId, shopId]
+        )
+      ).rows;
+
+      if (!svcRows.length) {
+        throw bad('Appointment has no services attached to reschedule.');
+      }
+
+      const totalDuration = svcRows.reduce((acc, s) => acc + (s.duration_minutes || 30), 0);
+      const totalAmount = svcRows.reduce((acc, s) => acc + (s.unit_price_paise || s.price_paise || 0), 0);
+
+      // Compute new start and end times
+      const [sh, sm] = dto.startTime.split(':').map(Number);
+      const startMin = sh * 60 + sm;
+      const endMin = startMin + totalDuration;
+      const eh = Math.floor(endMin / 60);
+      const em = endMin % 60;
+      const endTime = `${String(eh).padStart(2, '0')}:${String(em).padStart(2, '0')}`;
+
+      // Worker assignment: use requested workerId or preserve existing workerId
+      const targetWorkerId = dto.workerId !== undefined ? (dto.workerId || null) : (apt.worker_id || null);
+
+      if (targetWorkerId) {
+        await this.assertWorker(c, targetWorkerId);
+      }
+
+      // 1. Mark existing appointment as rescheduled (frees up its slot for the exclusion constraint)
+      const reasonText = (dto.reason?.trim() || 'Rescheduled by customer online').slice(0, 300);
+      await c.query(
+        `UPDATE appointments
+         SET status = 'rescheduled',
+             updated_at = now()
+         WHERE id = $1 AND shop_id = $2`,
+        [appointmentId, shopId]
+      );
+
+      await c.query(
+        `INSERT INTO appointment_status_history (shop_id, appointment_id, from_status, to_status, status, notes, changed_by)
+         VALUES ($1, $2, $3, 'rescheduled', 'rescheduled', $4, $5)`,
+        [shopId, appointmentId, apt.status, `Rescheduled to ${dto.date} at ${dto.startTime}. Reason: ${reasonText}`, ctx.userId]
+      );
+
+      // 2. Create NEW appointment row pointing back via rescheduled_from_id
+      let newAppointmentId: string;
+      let newAppointmentNumber: number;
+      try {
+        const insRes = await c.query(
+          `INSERT INTO appointments (
+             shop_id, customer_id, worker_id, date, start_time, end_time,
+             status, notes, is_walk_in, total_amount_paise, rescheduled_from_id
+           )
+           VALUES ($1, $2, $3, $4::date, $5::time, $6::time, 'booked', $7, false, $8, $9)
+           RETURNING id, appointment_number`,
+          [
+            shopId,
+            customerId,
+            targetWorkerId,
+            dto.date,
+            dto.startTime,
+            endTime,
+            apt.notes ? `${apt.notes} [Rescheduled from #${apt.appointment_number}]` : `[Rescheduled from #${apt.appointment_number}]`,
+            totalAmount,
+            appointmentId,
+          ]
+        );
+        newAppointmentId = insRes.rows[0].id;
+        newAppointmentNumber = insRes.rows[0].appointment_number;
+      } catch (err: any) {
+        if (err.code === '23P01' || err.code === '23505') {
+          throw bad('The selected time slot is no longer available. Please select another slot.');
+        }
+        throw err;
+      }
+
+      // 3. Clone service snapshots onto new appointment
+      for (const s of svcRows) {
+        await c.query(
+          `INSERT INTO appointment_services (shop_id, appointment_id, service_id, service_name, unit_price_paise, duration_minutes)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [shopId, newAppointmentId, s.service_id, s.service_name || s.name_snapshot, s.unit_price_paise || s.price_paise, s.duration_minutes || 30]
+        );
+      }
+
+      // 4. Record status history for new appointment
+      await c.query(
+        `INSERT INTO appointment_status_history (shop_id, appointment_id, from_status, to_status, status, notes, changed_by)
+         VALUES ($1, $2, NULL, 'booked', 'booked', $3, $4)`,
+        [shopId, newAppointmentId, `Rescheduled from appointment #${apt.appointment_number}`, ctx.userId]
+      );
+
+      // 5. In-app notification for salon staff and assigned worker
+      await c.query(
+        `INSERT INTO notifications (shop_id, user_id, customer_id, title, message, type, channel, status, metadata)
+         VALUES ($1, $2, $3, $4, $5, 'appointment_confirmed', 'in_app', 'unread', $6)`,
+        [
+          shopId,
+          apt.worker_user_id || null,
+          customerId,
+          `Appointment #${apt.appointment_number} Rescheduled to #${newAppointmentNumber}`,
+          `Customer ${apt.customer_name} rescheduled appointment #${apt.appointment_number} to ${dto.date} at ${dto.startTime}. New booking: #${newAppointmentNumber}.`,
+          JSON.stringify({
+            oldAppointmentId: appointmentId,
+            oldAppointmentNumber: apt.appointment_number,
+            newAppointmentId,
+            newAppointmentNumber,
+            date: dto.date,
+            startTime: dto.startTime,
+            customerName: apt.customer_name,
+          }),
+        ]
+      );
+
+      // 6. Security audit trail
+      await this.audit.log(c, {
+        shopId,
+        userId: ctx.userId,
+        action: 'appointment.customer_reschedule',
+        entity: 'appointment',
+        entityId: appointmentId,
+        oldValues: { status: apt.status, date: apt.date, startTime: apt.start_time },
+        newValues: { status: 'rescheduled', newAppointmentId, newAppointmentNumber, newDate: dto.date, newStartTime: dto.startTime },
+        ip: ctx.ip,
+      });
+
+      return {
+        oldAppointmentId: appointmentId,
+        newAppointmentId,
+        newAppointmentNumber,
+        status: 'booked',
+        date: dto.date,
+        startTime: dto.startTime,
+        endTime,
+        message: `Appointment successfully rescheduled! New booking #${newAppointmentNumber} confirmed for ${dto.date} at ${dto.startTime}.`,
       };
     });
   }

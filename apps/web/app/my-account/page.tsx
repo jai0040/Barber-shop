@@ -69,6 +69,15 @@ export default function MyAccountPage() {
   const [cancelModalAppt, setCancelModalAppt] = useState<CustomerAppointment | null>(null);
   const [cancelReason, setCancelReason] = useState<string>('');
   const [cancellingAppt, setCancellingAppt] = useState<boolean>(false);
+  const [rescheduleModalAppt, setRescheduleModalAppt] = useState<CustomerAppointment | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>('');
+  const [rescheduleTime, setRescheduleTime] = useState<string>('');
+  const [rescheduleWorkerId, setRescheduleWorkerId] = useState<string>('any');
+  const [rescheduleReason, setRescheduleReason] = useState<string>('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<Array<{ time: string; availableWorkers: Array<{ id: string; name: string }> }>>([]);
+  const [loadingSlots, setLoadingSlots] = useState<boolean>(false);
+  const [reschedulingAppt, setReschedulingAppt] = useState<boolean>(false);
+  const [slotsError, setSlotsError] = useState<string | null>(null);
   const [joinStatus, setJoinStatus] = useState<'linked' | 'pending' | 'not_joined' | 'loading'>('loading');
   const [notes, setNotes] = useState('');
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -217,6 +226,84 @@ export default function MyAccountPage() {
       setCancelModalAppt(null);
     } finally {
       setCancellingAppt(false);
+    }
+  }
+
+  function openRescheduleModal(appt: CustomerAppointment) {
+    setRescheduleModalAppt(appt);
+    setRescheduleReason('');
+    setRescheduleTime('');
+    setSlotsError(null);
+    setRescheduleWorkerId(appt.worker ? appt.worker.id : 'any');
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    setRescheduleDate(d.toISOString().slice(0, 10));
+  }
+
+  useEffect(() => {
+    if (!rescheduleModalAppt || !rescheduleDate) {
+      setRescheduleSlots([]);
+      return;
+    }
+    const serviceIds = rescheduleModalAppt.services.map((s) => s.id).filter(Boolean);
+    if (!serviceIds.length) return;
+
+    setLoadingSlots(true);
+    setSlotsError(null);
+
+    const workerParam = rescheduleWorkerId !== 'any' ? `&workerId=${rescheduleWorkerId}` : '';
+    apiRequest<{ slots: Array<{ time: string; availableWorkers: Array<{ id: string; name: string }> }> }>(
+      `/appointments/public/${slug}/slots?date=${rescheduleDate}&serviceIds=${serviceIds.join(',')}${workerParam}`
+    )
+      .then((data) => {
+        setRescheduleSlots(data.slots || []);
+        if (data.slots && !data.slots.some((s) => s.time === rescheduleTime)) {
+          setRescheduleTime('');
+        }
+      })
+      .catch((err: any) => {
+        setRescheduleSlots([]);
+        setSlotsError(err.message || 'No slots available for this date.');
+      })
+      .finally(() => setLoadingSlots(false));
+  }, [rescheduleModalAppt, rescheduleDate, rescheduleWorkerId]);
+
+  async function handleConfirmReschedule(e: React.FormEvent) {
+    e.preventDefault();
+    if (!rescheduleModalAppt || !rescheduleDate || !rescheduleTime) {
+      setError('Please select a date and an available time slot.');
+      return;
+    }
+
+    try {
+      setReschedulingAppt(true);
+      setError(null);
+      const res = await apiRequest<{
+        oldAppointmentId: string;
+        newAppointmentId: string;
+        newAppointmentNumber: number;
+        date: string;
+        startTime: string;
+        message: string;
+      }>(`/me/shops/${slug}/appointments/${rescheduleModalAppt.id}/reschedule`, {
+        method: 'POST',
+        body: JSON.stringify({
+          date: rescheduleDate,
+          startTime: rescheduleTime,
+          workerId: rescheduleWorkerId !== 'any' ? rescheduleWorkerId : undefined,
+          reason: rescheduleReason.trim() || undefined,
+        }),
+      });
+
+      setSuccessMsg(res.message || `Appointment rescheduled to ${res.date} at ${res.startTime}!`);
+      setTimeout(() => setSuccessMsg(null), 5000);
+      setRescheduleModalAppt(null);
+      setRescheduleTime('');
+      await loadAppointments();
+    } catch (err: any) {
+      setError(err.message || 'Failed to reschedule appointment. Please contact the salon directly.');
+    } finally {
+      setReschedulingAppt(false);
     }
   }
 
@@ -616,17 +703,27 @@ export default function MyAccountPage() {
 
                       <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap">
                         {isCancellable && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCancelModalAppt(appt);
-                              setCancelReason('');
-                            }}
-                            className="w-full sm:w-auto px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-                            title="Cancel this appointment"
-                          >
-                            <X className="w-3.5 h-3.5" /> Cancel
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openRescheduleModal(appt)}
+                              className="w-full sm:w-auto px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500 text-amber-400 hover:text-slate-950 border border-amber-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                              title="Reschedule this appointment"
+                            >
+                              <Calendar className="w-3.5 h-3.5" /> Reschedule
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCancelModalAppt(appt);
+                                setCancelReason('');
+                              }}
+                              className="w-full sm:w-auto px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/20 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                              title="Cancel this appointment"
+                            >
+                              <X className="w-3.5 h-3.5" /> Cancel
+                            </button>
+                          </>
                         )}
                         {isCompleted && !appt.review && (
                           <button
@@ -853,6 +950,153 @@ export default function MyAccountPage() {
                 {cancellingAppt ? 'Cancelling...' : 'Confirm Cancellation'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Appointment Modal */}
+      {rescheduleModalAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl relative text-left max-h-[90vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => setRescheduleModalAppt(null)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base">
+                  Reschedule Appointment #{rescheduleModalAppt.appointmentNumber}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Currently: {rescheduleModalAppt.date} at {rescheduleModalAppt.startTime}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3.5 text-xs text-slate-300 space-y-1.5 mb-4">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Services:</span>
+                <span className="font-medium text-white text-right">
+                  {rescheduleModalAppt.services.map((s) => s.name).join(', ')}
+                </span>
+              </div>
+              {rescheduleModalAppt.worker && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Current Stylist:</span>
+                  <span className="font-medium text-amber-400">{rescheduleModalAppt.worker.name}</span>
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleConfirmReschedule} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5 uppercase text-[11px] tracking-wider">
+                  Select New Date
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={new Date().toISOString().slice(0, 10)}
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5 uppercase text-[11px] tracking-wider">
+                  Stylist Preference
+                </label>
+                <select
+                  value={rescheduleWorkerId}
+                  onChange={(e) => setRescheduleWorkerId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  <option value="any">Any Available Stylist</option>
+                  {rescheduleModalAppt.worker && (
+                    <option value={rescheduleModalAppt.worker.id}>
+                      {rescheduleModalAppt.worker.name} (Keep Current Stylist)
+                    </option>
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5 uppercase text-[11px] tracking-wider">
+                  Available Time Slots
+                </label>
+
+                {loadingSlots ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="h-9 bg-slate-950 rounded-xl border border-slate-800 animate-pulse" />
+                    ))}
+                  </div>
+                ) : rescheduleSlots.length === 0 ? (
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-center text-slate-400 text-xs">
+                    {slotsError || 'No open slots on this date. Please pick another date.'}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {rescheduleSlots.map((slot) => {
+                      const isSelected = rescheduleTime === slot.time;
+                      return (
+                        <button
+                          key={slot.time}
+                          type="button"
+                          onClick={() => setRescheduleTime(slot.time)}
+                          className={`py-2 px-2.5 rounded-xl border text-center text-xs font-bold transition ${
+                            isSelected
+                              ? 'bg-amber-500 border-amber-500 text-slate-950 shadow-md'
+                              : 'bg-slate-950 border-slate-800 text-slate-200 hover:border-slate-700'
+                          }`}
+                        >
+                          {slot.time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1 text-[11px]">
+                  Reason for Rescheduling (Optional)
+                </label>
+                <input
+                  type="text"
+                  maxLength={300}
+                  placeholder="e.g. Schedule changed, work meeting"
+                  value={rescheduleReason}
+                  onChange={(e) => setRescheduleReason(e.target.value)}
+                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRescheduleModalAppt(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reschedulingAppt || !rescheduleTime}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  {reschedulingAppt ? 'Rescheduling...' : 'Confirm'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

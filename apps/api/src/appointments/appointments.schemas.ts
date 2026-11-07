@@ -56,3 +56,12 @@ export const appointmentQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export const rescheduleMyAppointmentSchema = z.object({
+  date: z.string().regex(dateRegex, 'Date must be formatted as YYYY-MM-DD'),
+  startTime: z.string().regex(timeRegex, 'Start time must be formatted as HH:mm'),
+  workerId: z.string().uuid().optional().nullable(),
+  reason: z.string().trim().max(300).optional().nullable(),
+});
+
+export type RescheduleMyAppointmentDto = z.infer<typeof rescheduleMyAppointmentSchema>;
