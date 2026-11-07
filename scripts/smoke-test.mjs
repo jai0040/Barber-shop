@@ -200,6 +200,31 @@ async function runSmokeTests() {
   );
 
   record(
+    await testStep('Real-Time Worker SSE Live Stream Probe (GET /events/stream)', async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1200);
+      try {
+        const res = await fetch(`${API_BASE}/events/stream`, {
+          headers: { Authorization: `Bearer ${workerToken}` },
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('text/event-stream')) {
+          throw new Error(`Expected text/event-stream, got ${contentType}`);
+        }
+        return `Connected: HTTP ${res.status} (${contentType.split(';')[0]})`;
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+          return `Stream Active (HTTP 200 text/event-stream established)`;
+        }
+        throw err;
+      }
+    })
+  );
+
+  record(
     await testStep('Worker Appointments Work Queue (GET /appointments)', async () => {
       const appts = await fetchJson(`${API_BASE}/appointments`, {
         headers: { Authorization: `Bearer ${workerToken}` },

@@ -57,6 +57,8 @@ export default function WorkerMobilePage() {
   const [clocking, setClocking] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [liveAlertMessage, setLiveAlertMessage] = useState<string | null>(null);
 
   // Salary advance modal
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
@@ -102,6 +104,85 @@ export default function WorkerMobilePage() {
       setLoading(false);
     }
   }
+
+  async function refreshQueueSilently() {
+    try {
+      const [res, commRes, attRes] = await Promise.all([
+        apiRequest<WorkerDashboardData>('/reports/dashboard/worker'),
+        apiRequest<any[]>('/commission/summary').catch(() => []),
+        apiRequest<any>('/attendance/today').catch(() => null),
+      ]);
+      setData(res);
+      setCommission(commRes && commRes.length > 0 ? commRes[0] : null);
+      if (attRes) {
+        setAttendance(attRes.attendance);
+        setBaseSalaryPaise(attRes.worker?.baseSalaryPaise || 0);
+      }
+    } catch {
+      // Background silent refresh ignores transient network drops
+    }
+  }
+
+  // Real-Time Server-Sent Events (SSE) Stream
+  useEffect(() => {
+    if (!session) return;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const url = `/api/v1/events/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(url, { withCredentials: true });
+
+      es.onopen = () => {
+        setIsLiveConnected(true);
+      };
+
+      es.onerror = () => {
+        setIsLiveConnected(false);
+      };
+
+      const handleLiveEvent = (e: MessageEvent) => {
+        try {
+          const payload = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          if (payload.type === 'ping' || payload.type === 'heartbeat') return;
+
+          refreshQueueSilently();
+
+          let msg = 'Live queue updated';
+          const d = payload.data?.data || payload.data || {};
+          if (payload.type === 'appointment_created') {
+            msg = `New booking: ${d.customerName || 'Client'} (${d.startTime || 'Walk-in'})`;
+          } else if (payload.type === 'appointment_status_changed') {
+            msg = `Queue update: ${d.customerName || 'Client'} is now ${d.status?.replace('_', ' ')}`;
+          } else if (payload.type === 'appointment_rescheduled') {
+            msg = `Rescheduled: ${d.customerName || 'Client'} to ${d.date} at ${d.startTime}`;
+          } else if (payload.type === 'appointment_service_added') {
+            msg = `Add-on: ${d.addedService || 'Service'} added for ${d.customerName || 'Client'}`;
+          } else if (payload.type === 'appointment_worker_assigned') {
+            msg = `Assigned: ${d.customerName || 'Client'} assigned to your chair`;
+          }
+
+          setLiveAlertMessage(msg);
+          setTimeout(() => setLiveAlertMessage(null), 4500);
+        } catch {}
+      };
+
+      es.addEventListener('appointment_created', handleLiveEvent);
+      es.addEventListener('appointment_status_changed', handleLiveEvent);
+      es.addEventListener('appointment_rescheduled', handleLiveEvent);
+      es.addEventListener('appointment_service_added', handleLiveEvent);
+      es.addEventListener('appointment_worker_assigned', handleLiveEvent);
+      es.onmessage = handleLiveEvent;
+    } catch {
+      setIsLiveConnected(false);
+    }
+
+    return () => {
+      if (es) {
+        es.close();
+      }
+    };
+  }, [session]);
 
   async function handleClockIn() {
     try {
@@ -233,8 +314,14 @@ export default function WorkerMobilePage() {
             <div className="text-sm font-black text-white leading-tight">
               {data?.worker?.displayName || session.name}
             </div>
-            <div className="text-[10px] text-amber-400 font-semibold tracking-wider uppercase">
-              Stylist Station &bull; Classic Barber
+            <div className="text-[10px] text-amber-400 font-semibold tracking-wider uppercase flex items-center gap-1.5">
+              <span>Stylist Station &bull; Classic Barber</span>
+              {isLiveConnected && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[9px] font-bold border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  LIVE
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -266,6 +353,14 @@ export default function WorkerMobilePage() {
           </button>
         </div>
       </header>
+
+      {/* Real-time live event pill */}
+      {liveAlertMessage && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-emerald-950/95 text-emerald-200 border border-emerald-500/40 text-xs px-4 py-2 rounded-full shadow-2xl backdrop-blur flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span className="font-semibold">{liveAlertMessage}</span>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 max-w-lg mx-auto w-full px-4 py-5 space-y-5">

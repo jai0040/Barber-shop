@@ -17,7 +17,7 @@ export async function getFreePort(): Promise<number> {
 }
 
 export interface Harness {
-  base: string; ownerPool: Pool; appPool: Pool; appUrl: string; ownerUrl: string;
+  base: string; ownerPool: Pool; appPool: Pool; appUrl: string; ownerUrl: string; app: any;
   close(): Promise<void>;
   call(method: string, p: string, o?: { token?: string; body?: unknown; headers?: Record<string, string> }): Promise<{ status: number; body: any; headers: Headers }>;
   upload(p: string, token: string | undefined, file: Buffer | null, o?: { filename?: string; mime?: string; field?: string }): Promise<{ status: number; body: any; headers: Headers }>;
@@ -56,7 +56,7 @@ export async function boot(port?: number, env: Record<string, string> = {}, extr
   const ownerPool = new Pool({ connectionString: ownerUrl, max: 3 });
   const appPool = new Pool({ connectionString: appUrl, max: 3 });
   return {
-    base, ownerPool, appPool, appUrl, ownerUrl, uploadDir,
+    base, ownerPool, appPool, appUrl, ownerUrl, uploadDir, app,
     async close() {
       const srv = app.getHttpServer() as any;
       try { srv?.close?.(); } catch {}

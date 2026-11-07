@@ -67,6 +67,8 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [isLiveConnected, setIsLiveConnected] = useState(false);
+  const [liveAlertMessage, setLiveAlertMessage] = useState<string | null>(null);
 
   async function loadDashboard() {
     try {
@@ -131,8 +133,120 @@ export default function AdminDashboardPage() {
     }
   }
 
+  async function refreshDashboardSilently() {
+    try {
+      const res = await apiRequest<any>('/reports/dashboard/admin');
+      const rawMetrics = res.metrics || res.kpis || {};
+      const normalizedMetrics = {
+        todayRevenuePaise: Number(rawMetrics.todayRevenuePaise ?? rawMetrics.revenuePaise ?? 0),
+        serviceRevenuePaise: Number(rawMetrics.serviceRevenuePaise ?? 0),
+        productRevenuePaise: Number(rawMetrics.productRevenuePaise ?? 0),
+        todayExpensesPaise: Number(rawMetrics.todayExpensesPaise ?? rawMetrics.expensesPaise ?? 0),
+        netResultPaise: Number(rawMetrics.netResultPaise ?? rawMetrics.netPaise ?? 0),
+        todayAppointments: Number(rawMetrics.todayAppointments ?? rawMetrics.totalAppointments ?? 0),
+        completedAppointments: Number(rawMetrics.completedAppointments ?? 0),
+        pendingAppointments: Number(rawMetrics.pendingAppointments ?? rawMetrics.inServiceAppointments ?? 0),
+        todayCustomers: Number(rawMetrics.todayCustomers ?? 0),
+        lowStockCount: Number(rawMetrics.lowStockCount ?? 0),
+      };
+
+      const normalizedAppointments = (res.appointments || res.todayAppointments || []).map((a: any) => ({
+        id: a.id,
+        appointmentNumber: a.appointmentNumber,
+        customerName: a.customerName || 'Guest',
+        customerPhone: a.customerPhone || '',
+        workerName: a.workerName || 'Unassigned',
+        startTime: a.startTime || '00:00',
+        endTime: a.endTime || '00:00',
+        status: a.status || 'booked',
+        totalAmountPaise: Number(a.totalAmountPaise || 0),
+        services: a.services || a.serviceNames || 'Custom Service',
+      }));
+
+      const normalizedWorkers = (res.workerPerformance || []).map((w: any) => ({
+        workerId: w.workerId || w.id,
+        displayName: w.displayName || w.workerName || 'Barber',
+        todayCustomers: Number(w.todayCustomers ?? 0),
+        completedCount: Number(w.completedCount ?? w.appointmentsCount ?? 0),
+        revenuePaise: Number(w.revenuePaise ?? 0),
+      }));
+
+      const normalizedLowStock = (res.lowStockItems || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        sku: p.sku || '',
+        stockQuantity: Number(p.stockQuantity ?? 0),
+        lowStockThreshold: Number(p.lowStockThreshold ?? 5),
+      }));
+
+      setData({
+        metrics: normalizedMetrics,
+        lowStockItems: normalizedLowStock,
+        appointments: normalizedAppointments,
+        workerPerformance: normalizedWorkers,
+      });
+    } catch {
+      // Background silent refresh ignores transient connection drops
+    }
+  }
+
   useEffect(() => {
     loadDashboard();
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const url = `/api/v1/events/stream?scope=all${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(url, { withCredentials: true });
+
+      es.onopen = () => {
+        setIsLiveConnected(true);
+      };
+
+      es.onerror = () => {
+        setIsLiveConnected(false);
+      };
+
+      const handleLiveEvent = (e: MessageEvent) => {
+        try {
+          const payload = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+          if (payload.type === 'ping' || payload.type === 'heartbeat') return;
+
+          refreshDashboardSilently();
+
+          let msg = 'Dashboard metrics updated in real-time';
+          const d = payload.data?.data || payload.data || {};
+          if (payload.type === 'appointment_created') {
+            msg = `New appointment: #${d.appointmentNumber || ''} ${d.customerName || 'Client'} (${d.startTime || 'Walk-in'})`;
+          } else if (payload.type === 'appointment_status_changed') {
+            msg = `Status updated: #${d.appointmentNumber || ''} ${d.customerName || 'Client'} is now ${d.status?.replace('_', ' ')}`;
+          } else if (payload.type === 'appointment_rescheduled') {
+            msg = `Rescheduled: #${d.newAppointmentNumber || ''} ${d.customerName || 'Client'} to ${d.date} at ${d.startTime}`;
+          } else if (payload.type === 'appointment_service_added') {
+            msg = `Add-on: ${d.addedService || 'Service'} added for #${d.appointmentNumber || ''} ${d.customerName || 'Client'}`;
+          }
+
+          setLiveAlertMessage(msg);
+          setTimeout(() => setLiveAlertMessage(null), 5000);
+        } catch {}
+      };
+
+      es.addEventListener('appointment_created', handleLiveEvent);
+      es.addEventListener('appointment_status_changed', handleLiveEvent);
+      es.addEventListener('appointment_rescheduled', handleLiveEvent);
+      es.addEventListener('appointment_service_added', handleLiveEvent);
+      es.addEventListener('appointment_worker_assigned', handleLiveEvent);
+      es.onmessage = handleLiveEvent;
+    } catch {
+      setIsLiveConnected(false);
+    }
+
+    return () => {
+      if (es) {
+        es.close();
+      }
+    };
   }, []);
 
   async function updateStatus(appointmentId: string, nextStatus: string) {
@@ -155,6 +269,12 @@ export default function AdminDashboardPage() {
       title="Shop Operations Dashboard"
       actions={
         <div className="flex items-center gap-2">
+          {isLiveConnected && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-semibold border border-emerald-500/25">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              LIVE
+            </span>
+          )}
           <button
             onClick={loadDashboard}
             disabled={loading}
@@ -172,6 +292,21 @@ export default function AdminDashboardPage() {
         </div>
       }
     >
+      {liveAlertMessage && (
+        <div className="mb-4 bg-emerald-950/80 border border-emerald-500/30 text-emerald-200 text-xs px-4 py-2.5 rounded-2xl flex items-center justify-between shadow-lg animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="font-semibold">{liveAlertMessage}</span>
+          </div>
+          <button
+            onClick={() => setLiveAlertMessage(null)}
+            className="text-emerald-400 hover:text-emerald-200 text-xs font-bold px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 rounded-2xl text-xs flex items-center justify-between">
           <span>{error}</span>

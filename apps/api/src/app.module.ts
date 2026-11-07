@@ -27,6 +27,7 @@ import { AttendanceModule } from './attendance/attendance.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PaymentsModule } from './payments/payments.module';
+import { EventsModule } from './events/events.module';
 import { AuditController } from './audit/audit.controller';
 
 @Module({
@@ -36,7 +37,7 @@ import { AuditController } from './audit/audit.controller';
     CatalogModule, WorkersModule, CustomersModule, AvailabilityModule,
     AppointmentsModule, ProductsModule, BillingModule, FinanceModule, ReportsModule,
     LoyaltyModule, MembershipsModule, CommissionModule, CouponsModule, AttendanceModule,
-    ReviewsModule, NotificationsModule, PaymentsModule,
+    ReviewsModule, NotificationsModule, PaymentsModule, EventsModule,
   ],
   controllers: [HealthController, AuditController],
   providers: [ // order matters: rate limit -> who are you -> CSRF -> are you allowed

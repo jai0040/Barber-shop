@@ -6,6 +6,7 @@ import { Db } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeEventsService } from '../events/events.service';
 import { normalizePhone } from '../auth/phone';
 import { loadConfig } from '../config';
 
@@ -32,7 +33,8 @@ export class AppointmentsService {
     private db: Db,
     private audit: AuditService,
     private availability: AvailabilityService,
-    @Optional() private notifications?: NotificationsService
+    @Optional() private notifications?: NotificationsService,
+    @Optional() private events?: RealtimeEventsService
   ) {}
 
   // ==================== PUBLIC BOOKING ====================
@@ -181,6 +183,26 @@ export class AppointmentsService {
         }
       }
 
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId: shop.id,
+            type: 'appointment_created',
+            appointmentId: loaded.id,
+            workerId: loaded.workerId,
+            customerId: loaded.customerId,
+            data: {
+              appointmentNumber: loaded.appointmentNumber,
+              customerName: loaded.customerName,
+              status: loaded.status,
+              date: loaded.date,
+              startTime: loaded.startTime,
+              totalAmountPaise: loaded.totalAmountPaise,
+            },
+          });
+        } catch {}
+      }
+
       return loaded;
     });
   }
@@ -284,7 +306,28 @@ export class AppointmentsService {
         ip: ctx.ip,
       });
 
-      return this.loadAppointment(c, ctx.shopId!, appointmentId);
+      const loaded = await this.loadAppointment(c, ctx.shopId!, appointmentId);
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId: ctx.shopId!,
+            type: 'appointment_created',
+            appointmentId: loaded.id,
+            workerId: loaded.workerId,
+            customerId: loaded.customerId,
+            data: {
+              appointmentNumber: loaded.appointmentNumber,
+              customerName: loaded.customerName,
+              status: loaded.status,
+              date: loaded.date,
+              startTime: loaded.startTime,
+              totalAmountPaise: loaded.totalAmountPaise,
+              isWalkIn: true,
+            },
+          });
+        } catch {}
+      }
+      return loaded;
     });
   }
 
@@ -338,7 +381,26 @@ export class AppointmentsService {
         ip: ctx.ip,
       });
 
-      return this.loadAppointment(c, ctx.shopId!, appointmentId);
+      const loaded = await this.loadAppointment(c, ctx.shopId!, appointmentId);
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId: ctx.shopId!,
+            type: 'appointment_service_added',
+            appointmentId: loaded.id,
+            workerId: loaded.workerId,
+            customerId: loaded.customerId,
+            data: {
+              appointmentNumber: loaded.appointmentNumber,
+              customerName: loaded.customerName,
+              addedService: service.name,
+              totalAmountPaise: loaded.totalAmountPaise,
+              endTime: loaded.endTime,
+            },
+          });
+        } catch {}
+      }
+      return loaded;
     });
   }
 
@@ -394,7 +456,25 @@ export class AppointmentsService {
         ip: ctx.ip,
       });
 
-      return this.loadAppointment(c, ctx.shopId!, appointmentId);
+      const loaded = await this.loadAppointment(c, ctx.shopId!, appointmentId);
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId: ctx.shopId!,
+            type: 'appointment_worker_assigned',
+            appointmentId: loaded.id,
+            workerId: workerId,
+            customerId: loaded.customerId,
+            data: {
+              appointmentNumber: loaded.appointmentNumber,
+              customerName: loaded.customerName,
+              workerId,
+              workerName: worker.display_name,
+            },
+          });
+        } catch {}
+      }
+      return loaded;
     });
   }
 
@@ -448,6 +528,25 @@ export class AppointmentsService {
         } catch {
           // notification dispatch failure should not block core status change
         }
+      }
+
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId: ctx.shopId!,
+            type: 'appointment_status_changed',
+            appointmentId: loaded.id,
+            workerId: loaded.workerId,
+            customerId: loaded.customerId,
+            data: {
+              appointmentNumber: loaded.appointmentNumber,
+              customerName: loaded.customerName,
+              status,
+              previousStatus: apt.status,
+              notes,
+            },
+          });
+        } catch {}
       }
 
       return loaded;

@@ -17,6 +17,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Append-only status audit log with timestamps and notes.
   - On-chair **"+ Add Service"** add-ons without duplicate appointments.
   - Customer self-service online cancellation & rescheduling (`/my-account` -> `POST /me/shops/:slug/appointments/:id/cancel` and `POST /me/shops/:slug/appointments/:id/reschedule`) enforcing the shop's configurable cancellation cooldown window (`cancellation_cooldown_hours`), automatically releasing the booked chair slot, maintaining `rescheduled_from_id` audit lineage, updating status history, and dispatching in-app alerts to salon staff.
+  - Real-time Server-Sent Events (SSE) live queue updates (`GET /api/v1/events/stream`) streaming chair status changes (`checked_in`, `in_service`, `completed`), walk-ins, reschedules, and add-ons directly to the Barber Mobile Station (`/worker`) and Admin Dashboard (`/admin/dashboard`) with visual LIVE badges and toast notifications.
   - Automated upcoming appointment reminder dispatch engine (`POST /appointments/dispatch-reminders`) and 1-click admin trigger (`/admin/appointments`) broadcasting in-app and WhatsApp reminders for appointments within upcoming service windows.
   - Walk-in support with admin barber assignment.
 
@@ -266,13 +267,13 @@ The test suite runs with a self-contained embedded database:
 npm test
 ```
 
-### End-to-End System Smoke Probe (40 Probes)
-Verify full system health, live database readiness, worker queues, owner reports, payment credentials, outbound webhook pings, backup export, and Next.js static metadata routes against running instances:
+### End-to-End System Smoke Probe (41 Probes)
+Verify full system health, live database readiness, worker queues, owner reports, payment credentials, outbound webhook pings, backup export, real-time SSE stream connectivity, and Next.js static metadata routes against running instances:
 ```bash
 npm run smoke-test
 ```
 
-### Test Coverage (100% Passing — 321 / 321 Tests across 22 Suites)
+### Test Coverage (100% Passing — 326 / 326 Tests across 23 Suites)
 1. `appointments-db.test.ts` — `btree_gist` anti-double-booking exclusion constraint, 10-tx race condition, immutable price snapshots, append-only status log.
 2. `appointments.test.ts` — End-to-end booking lifecycle, on-chair "+ Add Service", "Any Available Barber" assignment, cross-tenant isolation.
 3. `attendance-salary.test.ts` — Shift clock-in/out, historical overrides, base salary configuration, advance approvals, pro-rated payroll calculation, automatic expense logging, and cross-shop isolation.
@@ -288,13 +289,14 @@ npm run smoke-test
 13. `notifications-alerts.test.ts` — In-system notifications, unread counts, WhatsApp click-to-chat links, outbound webhook dispatch & HMAC-SHA256 signature ping testing, event hooks for bookings/status/payments/stock/reviews, customer portal receipts, and tenant isolation.
 14. `payment-gateway.test.ts` — Razorpay online orders, HMAC-SHA256 signature verification, webhook handling, shop credentials update, and cross-shop payment isolation.
 15. `ratelimit.test.ts` — Brute-force protection, HTTP 429 Too Many Requests enforcement.
-16. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
-17. `reviews-ratings.test.ts` — Customer 1–5 star reviews, duplicate prevention, public ratings summary, barber feedback, owner replies, moderation, and tenant isolation.
-18. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
-19. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
-20. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
-21. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
-22. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
+16. `realtime-events.test.ts` — Server-Sent Events (SSE) stream, tenant event isolation, worker chair queue filtering, and automated event triggers.
+17. `reports-dashboards.test.ts` — Owner/Admin dashboard metrics, Worker personal work queue, multi-dimensional business reports.
+18. `reviews-ratings.test.ts` — Customer 1–5 star reviews, duplicate prevention, public ratings summary, barber feedback, owner replies, moderation, and tenant isolation.
+19. `schedule.test.ts` — 7-day shifts, lunch/tea breaks, time-off overlap, "copy shop hours", worker-service capability mapping.
+20. `secure-by-default.test.ts` — Least privilege DB role restrictions, defense-in-depth isolation.
+21. `services-workers.test.ts` — Worker creation with login, service capability assignment, 15-min increment slot generator, shift bounds.
+22. `shops.test.ts` — Shop setup wizard, business hours, cancellation cooldown, EXIF-stripped WebP logo upload, private UPI QR.
+23. `workers.test.ts` — Atomic worker+user provisioning, manager vs owner safeguards, 256x256 WebP profile photos.
 
 ---
 

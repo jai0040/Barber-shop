@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PoolClient } from 'pg';
 import { ErrorCodes } from '@barbershop/shared';
 import { AppException } from '../common/app-exception';
 import { AuthContext, Effective } from '../common/types';
 import { Db, isUniqueViolation } from '../db/db.service';
 import { AuditService } from '../audit/audit.service';
+import { RealtimeEventsService } from '../events/events.service';
 import { RescheduleMyAppointmentDto } from '../appointments/appointments.schemas';
 
 const nf = (what = 'Customer') => new AppException(404, ErrorCodes.NOT_FOUND, `${what} not found.`);
@@ -31,7 +32,11 @@ const selfOut = (r: any) => ({
 
 @Injectable()
 export class CustomersService {
-  constructor(private db: Db, private audit: AuditService) {}
+  constructor(
+    private db: Db,
+    private audit: AuditService,
+    @Optional() private events?: RealtimeEventsService
+  ) {}
 
   // ================= staff side =================
   private scope(p: Effective, key: string) { return p.map.get(key); }
@@ -374,6 +379,25 @@ export class CustomersService {
         ip: ctx.ip,
       });
 
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId,
+            type: 'appointment_status_changed',
+            appointmentId,
+            workerId: apt.worker_id,
+            customerId,
+            data: {
+              appointmentNumber: apt.appointment_number,
+              customerName: apt.customer_name,
+              status: 'cancelled',
+              previousStatus: apt.status,
+              reason: cancelReason,
+            },
+          });
+        } catch {}
+      }
+
       return {
         id: appointmentId,
         status: 'cancelled',
@@ -554,6 +578,29 @@ export class CustomersService {
         newValues: { status: 'rescheduled', newAppointmentId, newAppointmentNumber, newDate: dto.date, newStartTime: dto.startTime },
         ip: ctx.ip,
       });
+
+      if (this.events) {
+        try {
+          this.events.emit({
+            shopId,
+            type: 'appointment_rescheduled',
+            appointmentId: newAppointmentId,
+            workerId: targetWorkerId,
+            customerId,
+            data: {
+              oldAppointmentId: appointmentId,
+              oldAppointmentNumber: apt.appointment_number,
+              newAppointmentId,
+              newAppointmentNumber,
+              customerName: apt.customer_name,
+              date: dto.date,
+              startTime: dto.startTime,
+              previousWorkerId: apt.worker_id,
+              targetWorkerId,
+            },
+          });
+        } catch {}
+      }
 
       return {
         oldAppointmentId: appointmentId,

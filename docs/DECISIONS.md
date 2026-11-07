@@ -87,3 +87,4 @@ D1–D13 are in the Phase 0 plan. Added in Phase 2:
   Add-ons, by contrast, are extra rows on the SAME appointment.
 - **D48 No physical deletion / append-only history.** The application database role cannot DELETE appointments or appointment services, nor UPDATE/DELETE
   `appointment_status_history` or `audit_logs`. Cancellation records who cancelled and whether it was the customer (needed for the cooldown rule in 6D).
+- **D49 Real-time Server-Sent Events (SSE) Stream.** Staff clients (the mobile barber station and admin operations console) stream live events via `@Sse('events/stream')` using an in-process RxJS event bus (`RealtimeEventsService`). Events are strictly scoped to the tenant (`shop_id = app_shop_id()`), worker-scoped subscribers receive their own chair queue updates plus shop announcements, heartbeats are dispatched every 25 seconds to prevent proxy timeouts, and clients update their queues silently without disruptive full-page reload spinners.

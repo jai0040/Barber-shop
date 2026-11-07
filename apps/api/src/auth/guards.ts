@@ -20,7 +20,8 @@ export class AuthGuard implements CanActivate {
     if (flag(this.r, IS_PUBLIC, ctx)) return true;
     const req = ctx.switchToHttp().getRequest<Request>();
     const bearer = /^Bearer (.+)$/i.exec(req.headers.authorization ?? '')?.[1];
-    const token = bearer ?? req.cookies?.access_token;
+    const queryToken = typeof req.query?.token === 'string' ? req.query.token : undefined;
+    const token = bearer ?? req.cookies?.access_token ?? queryToken;
     if (!token) throw new AppException(401, ErrorCodes.UNAUTHENTICATED, 'Please log in to continue.');
 
     let claims;
