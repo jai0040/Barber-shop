@@ -48,6 +48,7 @@ export class AppointmentsService {
       serviceIds: string[];
       workerId?: string | null;
       notes?: string | null;
+      couponCode?: string | null;
     }
   ): Promise<AppointmentItem> {
     const phone = normalizePhone(dto.phone, this.cfg.DEFAULT_COUNTRY_CODE);
@@ -118,6 +119,10 @@ export class AppointmentsService {
       // 5. Create appointment
       let appointmentId: string;
       try {
+        const finalNotes = dto.couponCode
+          ? (dto.notes ? `${dto.notes} [Promo: ${dto.couponCode.toUpperCase()}]` : `[Promo: ${dto.couponCode.toUpperCase()}]`)
+          : (dto.notes ?? null);
+
         const aptRes = await c.query(
           `INSERT INTO appointments (
              shop_id, customer_id, worker_id, date, start_time, end_time,
@@ -125,7 +130,7 @@ export class AppointmentsService {
            )
            VALUES ($1, $2, $3, $4::date, $5::time, $6::time, 'booked', $7, false, $8)
            RETURNING id`,
-          [shop.id, customerId, assignedWorkerId, dto.date, dto.startTime, endTime, dto.notes ?? null, totalAmount]
+          [shop.id, customerId, assignedWorkerId, dto.date, dto.startTime, endTime, finalNotes, totalAmount]
         );
         appointmentId = aptRes.rows[0].id;
       } catch (err: any) {

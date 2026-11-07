@@ -12,6 +12,7 @@ export const publicBookSchema = z.object({
   serviceIds: z.array(z.string().uuid()).min(1, 'Select at least one service'),
   workerId: z.string().optional().nullable(), // uuid or 'any' or null
   notes: z.string().trim().max(500).optional().nullable(),
+  couponCode: z.string().trim().max(30).optional().nullable(),
 });
 
 export const createWalkInSchema = z.object({

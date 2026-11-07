@@ -521,4 +521,71 @@ describe('Phase 4: Promotional Offers & Discount Coupons', () => {
       assert.equal(viewB.status, 404);
     });
   });
+
+  describe('5. Public Customer Coupon Discovery & Online Booking', () => {
+    it('public client can list active coupons without auth token', async () => {
+      const pubList = await h.call('GET', `/coupons/public/${shopA.slug}`);
+      assert.equal(pubList.status, 200);
+      assert.ok(Array.isArray(pubList.body.data));
+      const codes = pubList.body.data.map((c: any) => c.code);
+      assert.ok(codes.includes('WELCOME10'));
+    });
+
+    it('public client can validate promo coupon and receive discount preview', async () => {
+      const val = await h.call('POST', `/coupons/public/${shopA.slug}/validate`, {
+        body: {
+          code: 'WELCOME10',
+          subtotalPaise: 50000,
+          servicesTotalPaise: 50000,
+          productsTotalPaise: 0,
+        },
+      });
+      assert.equal(val.status, 201);
+      assert.equal(val.body.data.valid, true);
+      assert.equal(val.body.data.discountPaise, 5000); // 10% of 50000 is 5000
+    });
+
+    it('public booking records promo coupon code in appointment notes', async () => {
+      // 1. Ensure shop hours exist for Monday
+      await h.ownerPool.query(
+        `INSERT INTO shop_hours (shop_id, weekday, is_closed, open_time, close_time)
+         VALUES ($1, 1, false, '09:00'::time, '21:00'::time)
+         ON CONFLICT (shop_id, weekday) DO UPDATE SET is_closed = false, open_time = '09:00', close_time = '21:00'`,
+        [shopA.id]
+      );
+
+      // 2. Ensure worker schedule exists for Monday
+      await h.call('PUT', `/workers/${workerIdA}/schedule`, {
+        token: ownerTokenA,
+        body: { schedule: [{ weekday: 1, isWorking: true, startTime: '09:00', endTime: '21:00' }] },
+      });
+
+      const getNextMondayStr = (): string => {
+        const d = new Date();
+        const day = d.getUTCDay();
+        const diff = (8 - day) % 7 || 7;
+        const nextMon = new Date(d.getTime() + diff * 86400000);
+        return nextMon.toISOString().slice(0, 10);
+      };
+
+      const mondayStr = getNextMondayStr();
+      const bookRes = await h.call('POST', `/appointments/public/${shopA.slug}/book`, {
+        body: {
+          name: 'Online Booker',
+          phone: '+919876599999',
+          date: mondayStr,
+          startTime: '11:00',
+          serviceIds: [haircutIdA],
+          workerId: workerIdA,
+          couponCode: 'WELCOME10',
+          notes: 'Customer prefers side parting',
+        },
+      });
+
+      assert.equal(bookRes.status, 201);
+      assert.equal(bookRes.body.success, true);
+      assert.ok(bookRes.body.data.notes.includes('[Promo: WELCOME10]'));
+      assert.ok(bookRes.body.data.notes.includes('side parting'));
+    });
+  });
 });

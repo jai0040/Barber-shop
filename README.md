@@ -57,6 +57,7 @@ A production-ready, mobile-first, multi-tenant barber shop management platform d
   - Configurable minimum order values, expiration dates, total usage caps, and per-customer usage limits.
   - Category-scoped applicability (`all`, `services_only`, `products_only`).
   - Real-time POS checkout validation and 1-click apply widget (`/admin/billing`).
+  - **Online Customer Booking Integration**: Public coupon listing (`GET /coupons/public/:slug`) and validation (`POST /coupons/public/:slug/validate`), with live discount calculation, collapsible promo box, quick-apply offer pills, and appointment note tagging (`[Promo: CODE]`) on customer booking wizard (`/[slug]/book`).
   - Append-only `coupon_redemptions` ledger with PostgreSQL RLS and automatic immutable reversal tracking upon invoice voiding.
 
 - **Staff Attendance & Salary / Advance Engine (Phase 5)**:

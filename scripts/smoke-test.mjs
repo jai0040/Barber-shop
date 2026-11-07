@@ -160,6 +160,29 @@ async function runSmokeTests() {
     })
   );
 
+  record(
+    await testStep('Public Promotional Coupons (GET /coupons/public/classic-barber)', async () => {
+      const coupons = await fetchJson(`${API_BASE}/coupons/public/classic-barber`);
+      if (!Array.isArray(coupons)) throw new Error('Expected array of promotional coupons');
+      return `${coupons.length} active promo offers listed`;
+    })
+  );
+
+  record(
+    await testStep('Public Promo Coupon Validation (POST /coupons/public/classic-barber/validate)', async () => {
+      const val = await fetchJson(`${API_BASE}/coupons/public/classic-barber/validate`, {
+        method: 'POST',
+        body: JSON.stringify({
+          code: 'WELCOME10',
+          subtotalPaise: 50000,
+          servicesTotalPaise: 50000,
+          productsTotalPaise: 0,
+        }),
+      });
+      return `Valid: ${val.valid ? 'Yes' : 'No'} (Discount: ₹${((val.discountPaise || 0) / 100).toFixed(2)})`;
+    })
+  );
+
   // --------------------------------------------------------------------------
   // 3. Worker Mobile Station Authentication & Work Queue
   // --------------------------------------------------------------------------

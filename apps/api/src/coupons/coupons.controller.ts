@@ -9,17 +9,20 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { Auth, RequirePermission } from '../common/decorators';
+import { Auth, Public, RequirePermission } from '../common/decorators';
 import { AuthContext } from '../common/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { slugParam } from '../shops/shops.schemas';
 import { CouponsService } from './coupons.service';
 import {
   createCouponSchema,
   updateCouponSchema,
   validateCouponSchema,
+  validatePublicCouponSchema,
   CreateCouponDto,
   UpdateCouponDto,
   ValidateCouponDto,
+  ValidatePublicCouponDto,
 } from './coupons.schemas';
 
 @Controller('coupons')
@@ -71,5 +74,24 @@ export class CouponsController {
     @Body(new ZodValidationPipe(validateCouponSchema)) dto: ValidateCouponDto
   ) {
     return this.svc.validateCoupon(ctx, dto);
+  }
+}
+
+@Public()
+@Controller('coupons/public')
+export class PublicCouponsController {
+  constructor(private svc: CouponsService) {}
+
+  @Get(':slug')
+  listPublicCoupons(@Param('slug', new ZodValidationPipe(slugParam)) slug: string) {
+    return this.svc.listPublicCoupons(slug);
+  }
+
+  @Post(':slug/validate')
+  validatePublicCoupon(
+    @Param('slug', new ZodValidationPipe(slugParam)) slug: string,
+    @Body(new ZodValidationPipe(validatePublicCouponSchema)) dto: ValidatePublicCouponDto
+  ) {
+    return this.svc.validatePublicCoupon(slug, dto);
   }
 }

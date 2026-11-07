@@ -4,7 +4,9 @@ import { AuditService } from '../audit/audit.service';
 import { AuthContext } from '../common/types';
 import { AppException } from '../common/app-exception';
 import { ErrorCodes, CouponItem, CouponValidationResult } from '@barbershop/shared';
-import { CreateCouponDto, UpdateCouponDto, ValidateCouponDto } from './coupons.schemas';
+import { CreateCouponDto, UpdateCouponDto, ValidateCouponDto, ValidatePublicCouponDto } from './coupons.schemas';
+import { normalizePhone } from '../auth/phone';
+import { loadConfig } from '../config';
 import { PoolClient } from 'pg';
 
 const notFound = (m = 'Coupon not found') =>
@@ -322,5 +324,61 @@ export class CouponsService {
        WHERE id = $1 AND shop_id = $2`,
       [couponId, shopId]
     );
+  }
+
+  // ==================== PUBLIC CUSTOMER DISCOVERY & VALIDATION ====================
+
+  async listPublicCoupons(slug: string): Promise<Array<Pick<CouponItem, 'id' | 'code' | 'description' | 'discountType' | 'discountValue' | 'maxDiscountPaise' | 'minOrderPaise' | 'applicableTo'>>> {
+    return this.db.tenant({ publicRead: true }, async (c) => {
+      const shop = (await c.query(`SELECT id FROM shops WHERE slug = $1 AND status = 'active'`, [slug])).rows[0];
+      if (!shop) throw notFound('Shop not found');
+
+      const rows = (
+        await c.query(
+          `SELECT id, code, description, discount_type, discount_value, max_discount_paise, min_order_paise, applicable_to
+           FROM coupons
+           WHERE shop_id = $1 AND is_active = true
+             AND valid_from <= now() AND (valid_until IS NULL OR valid_until > now())
+             AND (max_redemptions_total IS NULL OR times_redeemed < max_redemptions_total)
+           ORDER BY created_at DESC LIMIT 10`,
+          [shop.id]
+        )
+      ).rows;
+
+      return rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        description: r.description,
+        discountType: r.discount_type,
+        discountValue: Number(r.discount_value),
+        maxDiscountPaise: r.max_discount_paise ? Number(r.max_discount_paise) : null,
+        minOrderPaise: Number(r.min_order_paise),
+        applicableTo: r.applicable_to,
+      }));
+    });
+  }
+
+  async validatePublicCoupon(slug: string, dto: ValidatePublicCouponDto): Promise<CouponValidationResult> {
+    return this.db.tenant({ publicRead: true }, async (c) => {
+      const shop = (await c.query(`SELECT id FROM shops WHERE slug = $1 AND status = 'active'`, [slug])).rows[0];
+      if (!shop) throw notFound('Shop not found');
+
+      let customerId: string | undefined = undefined;
+      if (dto.customerPhone) {
+        const phone = normalizePhone(dto.customerPhone, loadConfig().DEFAULT_COUNTRY_CODE);
+        if (phone) {
+          const cust = (await c.query(`SELECT id FROM customers WHERE shop_id = $1 AND phone = $2`, [shop.id, phone])).rows[0];
+          if (cust) customerId = cust.id;
+        }
+      }
+
+      return this.validateCoupon({ shopId: shop.id } as any, {
+        code: dto.code,
+        customerId,
+        subtotalPaise: dto.subtotalPaise,
+        servicesTotalPaise: dto.servicesTotalPaise,
+        productsTotalPaise: dto.productsTotalPaise,
+      });
+    });
   }
 }

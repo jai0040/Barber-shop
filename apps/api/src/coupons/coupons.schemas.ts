@@ -50,6 +50,15 @@ export const validateCouponSchema = z.object({
   productsTotalPaise: z.number().int().nonnegative().default(0),
 });
 
+export const validatePublicCouponSchema = z.object({
+  code: z.string().min(1).trim().transform((v) => v.toUpperCase()),
+  customerPhone: z.string().optional().nullable(),
+  subtotalPaise: z.number().int().nonnegative(),
+  servicesTotalPaise: z.number().int().nonnegative().default(0),
+  productsTotalPaise: z.number().int().nonnegative().default(0),
+});
+
 export type CreateCouponDto = z.infer<typeof createCouponSchema>;
 export type UpdateCouponDto = z.infer<typeof updateCouponSchema>;
 export type ValidateCouponDto = z.infer<typeof validateCouponSchema>;
+export type ValidatePublicCouponDto = z.infer<typeof validatePublicCouponSchema>;
