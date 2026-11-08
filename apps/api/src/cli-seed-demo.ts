@@ -19,8 +19,14 @@ async function seed() {
     ssl: isLocal ? false : { rejectUnauthorized: false },
   });
 
+  // Ensure every connection has platform bypass active for seeding
+  pool.on('connect', (client) => {
+    client.query("SELECT set_config('app.is_platform', 'on', false)").catch(() => {});
+  });
+
   try {
     await pool.query("SET client_encoding = 'UTF8'");
+    await pool.query("SELECT set_config('app.is_platform', 'on', false)");
     console.log('Seeding realistic demo data for "Classic Barber Shop"...');
 
     // 1. Create or get "Classic Barber Shop"

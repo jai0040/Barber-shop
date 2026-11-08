@@ -20,7 +20,7 @@ services:
     plan: free
     region: oregon
     buildCommand: npm ci --include=dev && npm run build -w @barbershop/shared && npm run build -w @barbershop/api
-    startCommand: npm run migrate -w @barbershop/api && npm run seed-demo -w @barbershop/api && npm run start -w @barbershop/api
+    startCommand: npm run migrate -w @barbershop/api && (npm run seed-demo -w @barbershop/api || true) && npm run start -w @barbershop/api
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
@@ -66,7 +66,4 @@ services:
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       - key: API_URL
-        fromService:
-          type: web
-          name: barber-api
-          property: host
+        value: https://barber-api-h7ia.onrender.com
