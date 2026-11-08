@@ -256,7 +256,7 @@ function BookingWizardContent() {
     setLoading(true);
     Promise.all([
       apiRequest<{ services: ServiceItem[] }>(`/services/public/${slug}`),
-      apiRequest<Array<{ id: string; displayName: string; serviceIds: string[] }>>(`/workers/public/${slug}`),
+      apiRequest<Array<{ id: string; displayName: string; serviceIds: string[] }>>(`/shops/public/${slug}/barbers`),
       apiRequest<Array<any>>(`/coupons/public/${slug}`).catch(() => []),
     ])
       .then(([svcData, workerData, couponData]) => {

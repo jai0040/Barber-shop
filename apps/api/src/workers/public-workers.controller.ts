@@ -11,12 +11,12 @@ import { publicBarbersSchema } from './workers.schemas';
 
 /** Customer website: barber photos (only for active, non-archived barbers of active shops, via RLS public_read). */
 @Public()
-@Controller('shops/public/:slug/barbers')
+@Controller()
 export class PublicWorkersController {
   constructor(private db: Db, private files: FilesService) {}
 
   /** Barbers; with ?serviceIds=a,b only those who can perform ALL of them (customers never see someone who can't do the job). */
-  @Get()
+  @Get(['shops/public/:slug/barbers', 'workers/public/:slug'])
   list(@Param('slug', new ZodValidationPipe(slugParam)) slug: string, @Query(new ZodValidationPipe(publicBarbersSchema)) q: { serviceIds: string[] }) {
     return this.db.tenant({ publicRead: true }, async (c) => {
       const shop = (await c.query('SELECT id FROM shops WHERE slug=$1', [slug])).rows[0];
@@ -31,7 +31,7 @@ export class PublicWorkersController {
     });
   }
 
-  @Get(':id/photo')
+  @Get(['shops/public/:slug/barbers/:id/photo', 'workers/public/:slug/:id/photo'])
   async photo(@Param('slug', new ZodValidationPipe(slugParam)) slug: string, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const f = await this.db.tenant({ publicRead: true }, async (c) =>
       (await c.query('SELECT f.storage_key, f.mime FROM workers w JOIN files f ON f.id = w.photo_file_id JOIN shops s ON s.id = w.shop_id WHERE s.slug=$1 AND w.id=$2', [slug, id])).rows[0]);
