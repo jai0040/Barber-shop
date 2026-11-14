@@ -4,16 +4,20 @@ import {
   Get,
   Headers,
   HttpCode,
+  Param,
   Patch,
   Post,
 } from '@nestjs/common';
 import { Auth, Public, RequirePermission } from '../common/decorators';
 import { AuthContext } from '../common/types';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
+import { slugParam } from '../shops/shops.schemas';
 import { PaymentGatewayService } from './payments.service';
 import {
+  createPublicRazorpayOrderSchema,
   createRazorpayOrderSchema,
   updateGatewayCredentialsSchema,
+  verifyPublicRazorpayPaymentSchema,
   verifyRazorpayPaymentSchema,
 } from './payments.schemas';
 
@@ -37,6 +41,24 @@ export class PaymentsController {
     @Body(new ZodValidationPipe(verifyRazorpayPaymentSchema)) dto: any
   ) {
     return this.svc.verifyPayment(ctx, dto);
+  }
+
+  @Public()
+  @Post('public/:slug/razorpay/create-order')
+  createPublicOrder(
+    @Param('slug', new ZodValidationPipe(slugParam)) slug: string,
+    @Body(new ZodValidationPipe(createPublicRazorpayOrderSchema)) dto: any
+  ) {
+    return this.svc.createPublicOrder(slug, dto);
+  }
+
+  @Public()
+  @Post('public/:slug/razorpay/verify')
+  verifyPublicPayment(
+    @Param('slug', new ZodValidationPipe(slugParam)) slug: string,
+    @Body(new ZodValidationPipe(verifyPublicRazorpayPaymentSchema)) dto: any
+  ) {
+    return this.svc.verifyPublicPayment(slug, dto);
   }
 
   @RequirePermission('settings.manage')

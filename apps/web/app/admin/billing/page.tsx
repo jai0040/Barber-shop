@@ -37,6 +37,7 @@ import {
   CustomerLoyaltySummary,
   LoyaltySettings,
 } from '@barbershop/shared';
+import { openRazorpayCheckout } from '@/lib/razorpay';
 
 interface InvoiceLineItem {
   type: 'service' | 'product';
@@ -490,14 +491,64 @@ export default function AdminBillingPage() {
 
       // 2. Record Payment if total is positive
       if (totalPaise > 0) {
-        await apiRequest(`/billing/invoices/${invoice.id}/pay`, {
-          method: 'POST',
-          body: JSON.stringify({
-            method: paymentMethod,
-            amountPaise: totalPaise,
-            transactionReference: upiRef.trim() || undefined,
-          }),
-        });
+        if (paymentMethod === 'razorpay') {
+          // 2a. Create Razorpay order
+          const orderRes = await apiRequest<{
+            orderId: string;
+            amountPaise: number;
+            currency: string;
+            keyId: string;
+          }>('/payments/razorpay/create-order', {
+            method: 'POST',
+            body: JSON.stringify({
+              invoiceId: invoice.id,
+              amountPaise: totalPaise,
+            }),
+          });
+
+          // 2b. Open Razorpay Standard Checkout popup modal
+          await new Promise<void>((resolve, reject) => {
+            openRazorpayCheckout({
+              key: orderRes.keyId,
+              amountPaise: orderRes.amountPaise,
+              currency: orderRes.currency,
+              name: 'Classic Barber Shop',
+              description: `Invoice #${invoice.invoiceNumber || 'POS'}`,
+              orderId: orderRes.orderId,
+              prefill: {
+                name: customerName || undefined,
+                contact: customerPhone || undefined,
+              },
+              onSuccess: async (rzpResp) => {
+                try {
+                  await apiRequest('/payments/razorpay/verify', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      invoiceId: invoice.id,
+                      razorpayOrderId: rzpResp.razorpay_order_id,
+                      razorpayPaymentId: rzpResp.razorpay_payment_id,
+                      razorpaySignature: rzpResp.razorpay_signature,
+                    }),
+                  });
+                  resolve();
+                } catch (vErr) {
+                  reject(vErr);
+                }
+              },
+              onError: (err) => reject(new Error(err?.description || 'Razorpay payment declined.')),
+              onDismiss: () => reject(new Error('Razorpay payment cancelled by user.')),
+            });
+          });
+        } else {
+          await apiRequest(`/billing/invoices/${invoice.id}/pay`, {
+            method: 'POST',
+            body: JSON.stringify({
+              method: paymentMethod,
+              amountPaise: totalPaise,
+              transactionReference: upiRef.trim() || undefined,
+            }),
+          });
+        }
       }
 
       // 3. Mark appointment completed if linked

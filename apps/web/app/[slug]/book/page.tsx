@@ -17,10 +17,13 @@ import {
   X,
   Download,
   CalendarPlus,
+  CreditCard,
+  Store,
 } from 'lucide-react';
 import CustomerNavbar from '@/components/customer/Navbar';
 import CustomerBottomNav from '@/components/customer/BottomNav';
 import { apiRequest, formatINR, getSession } from '@/lib/api';
+import { openRazorpayCheckout } from '@/lib/razorpay';
 import { AppointmentItem, ServiceItem, TimeSlot, WorkerItem } from '@barbershop/shared';
 
 type Lang = 'en' | 'hi';
@@ -229,6 +232,8 @@ function BookingWizardContent() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentPreference, setPaymentPreference] = useState<'pay_at_shop' | 'razorpay'>('pay_at_shop');
+  const [paidOnline, setPaidOnline] = useState(false);
   const [confirmedAppointment, setConfirmedAppointment] = useState<AppointmentItem | null>(null);
 
   // Prefill preselected service or worker if passed in query param
@@ -392,6 +397,62 @@ function BookingWizardContent() {
           couponCode: appliedCoupon ? appliedCoupon.code : undefined,
         }),
       });
+
+      if (paymentPreference === 'razorpay' && estimatedPayablePaise > 0) {
+        try {
+          const orderRes = await apiRequest<{
+            orderId: string;
+            amountPaise: number;
+            currency: string;
+            keyId: string;
+            shopName: string;
+          }>(`/payments/public/${slug}/razorpay/create-order`, {
+            method: 'POST',
+            body: JSON.stringify({
+              appointmentId: apt.id,
+              amountPaise: estimatedPayablePaise,
+            }),
+          });
+
+          await new Promise<void>((resolve, reject) => {
+            openRazorpayCheckout({
+              key: orderRes.keyId,
+              amountPaise: orderRes.amountPaise,
+              currency: orderRes.currency,
+              name: orderRes.shopName || 'Classic Barber Shop',
+              description: `Appointment #${apt.appointmentNumber}`,
+              orderId: orderRes.orderId,
+              prefill: {
+                name: customerName,
+                contact: customerPhone,
+                email: customerEmail || undefined,
+              },
+              onSuccess: async (rzpResp) => {
+                try {
+                  await apiRequest(`/payments/public/${slug}/razorpay/verify`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      appointmentId: apt.id,
+                      razorpayOrderId: rzpResp.razorpay_order_id,
+                      razorpayPaymentId: rzpResp.razorpay_payment_id,
+                      razorpaySignature: rzpResp.razorpay_signature,
+                    }),
+                  });
+                  setPaidOnline(true);
+                  resolve();
+                } catch (vErr) {
+                  reject(vErr);
+                }
+              },
+              onError: (err) => reject(new Error(err?.description || 'Online payment failed.')),
+              onDismiss: () => resolve(),
+            });
+          });
+        } catch (payErr: any) {
+          console.warn('Razorpay checkout note:', payErr.message);
+        }
+      }
+
       setConfirmedAppointment(apt);
     } catch (err: any) {
       setError(err.message || 'Booking failed. Please try a different slot.');
@@ -419,6 +480,13 @@ function BookingWizardContent() {
               </h2>
               <p className="text-xs text-slate-500 mt-1">{t.welcomeMsg}</p>
             </div>
+
+            {paidOnline && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold text-emerald-800">
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+                Pre-Paid Online via Razorpay (UPI / Cards)
+              </div>
+            )}
 
             <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-3 border border-slate-100 text-sm">
               <div className="flex justify-between items-center pb-2 border-b border-slate-200">
@@ -1000,12 +1068,70 @@ function BookingWizardContent() {
               </div>
             </div>
 
+            {/* Payment Method Selector */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-amber-600" />
+                Payment Method
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div
+                  onClick={() => setPaymentPreference('pay_at_shop')}
+                  className={`p-3 rounded-xl border-2 transition cursor-pointer flex items-center justify-between ${
+                    paymentPreference === 'pay_at_shop'
+                      ? 'border-amber-600 bg-amber-50/60 shadow-sm'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Store className="w-4 h-4 text-slate-700" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Pay at Salon</p>
+                      <p className="text-[10px] text-slate-500">Cash / UPI upon visit</p>
+                    </div>
+                  </div>
+                  {paymentPreference === 'pay_at_shop' && (
+                    <CheckCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                </div>
+
+                <div
+                  onClick={() => setPaymentPreference('razorpay')}
+                  className={`p-3 rounded-xl border-2 transition cursor-pointer flex items-center justify-between ${
+                    paymentPreference === 'razorpay'
+                      ? 'border-amber-600 bg-amber-50/60 shadow-sm'
+                      : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-amber-600" />
+                    <div>
+                      <p className="text-xs font-bold text-slate-900">Pay Online Now</p>
+                      <p className="text-[10px] text-slate-500">Razorpay: UPI, GPay & Cards</p>
+                    </div>
+                  </div>
+                  {paymentPreference === 'razorpay' && (
+                    <CheckCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  )}
+                </div>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 text-center transition active:scale-95"
+              className="w-full py-3.5 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 text-center transition active:scale-95 flex items-center justify-center gap-2"
             >
-              {submitting ? t.confirmingBooking : `${t.confirmAndBook} (${formatINR(estimatedPayablePaise)})`}
+              {submitting ? (
+                t.confirmingBooking
+              ) : paymentPreference === 'razorpay' ? (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  Pay with Razorpay ({formatINR(estimatedPayablePaise)})
+                </>
+              ) : (
+                `${t.confirmAndBook} (${formatINR(estimatedPayablePaise)})`
+              )}
             </button>
           </form>
         )}

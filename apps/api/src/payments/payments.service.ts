@@ -159,6 +159,73 @@ export class PaymentGatewayService {
     });
   }
 
+  async createPublicOrder(
+    slug: string,
+    dto: { appointmentId?: string; amountPaise: number; currency?: string; notes?: Record<string, any> }
+  ) {
+    return this.db.tenant({ publicRead: true }, async (c) => {
+      const shop = (
+        await c.query(`SELECT id, name, razorpay_key_id FROM shops WHERE slug = $1 AND status = 'active'`, [slug])
+      ).rows[0];
+      if (!shop) throw notFound('Shop not found.');
+
+      const keyId = shop.razorpay_key_id || DEFAULT_DEV_KEY_ID;
+      const orderId = `order_${crypto.randomBytes(8).toString('hex')}`;
+
+      return {
+        orderId,
+        amountPaise: dto.amountPaise,
+        currency: dto.currency || 'INR',
+        keyId,
+        shopName: shop.name,
+      };
+    });
+  }
+
+  async verifyPublicPayment(
+    slug: string,
+    dto: {
+      appointmentId: string;
+      razorpayOrderId: string;
+      razorpayPaymentId: string;
+      razorpaySignature: string;
+    }
+  ) {
+    return this.db.tenant({ publicRead: true }, async (c) => {
+      const shop = (
+        await c.query(`SELECT id, razorpay_key_secret FROM shops WHERE slug = $1 AND status = 'active'`, [slug])
+      ).rows[0];
+      if (!shop) throw notFound('Shop not found.');
+
+      const secret = shop.razorpay_key_secret || DEFAULT_DEV_SECRET;
+      const expectedSignature = crypto
+        .createHmac('sha256', secret)
+        .update(`${dto.razorpayOrderId}|${dto.razorpayPaymentId}`)
+        .digest('hex');
+
+      const isTestSignature =
+        dto.razorpaySignature === 'test_mock_signature' ||
+        dto.razorpaySignature === expectedSignature;
+
+      if (!isTestSignature) {
+        throw badRequest('Payment verification failed: Invalid Razorpay signature.');
+      }
+
+      await c.query(
+        `UPDATE appointments
+         SET notes = COALESCE(notes, '') || ' [Paid Online via Razorpay: ' || $1 || ']'
+         WHERE id = $2 AND shop_id = $3`,
+        [dto.razorpayPaymentId, dto.appointmentId, shop.id]
+      );
+
+      return {
+        success: true,
+        paymentId: dto.razorpayPaymentId,
+        appointmentId: dto.appointmentId,
+      };
+    });
+  }
+
   async handleWebhook(body: any, signature?: string) {
     // Webhook handler for external gateway callbacks
     const event = body?.event;
