@@ -6,3 +6,4 @@ uploads
 *.log
 .data
 *.tsbuildinfo
+ce-flow-max/
