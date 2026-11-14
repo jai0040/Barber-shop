@@ -84,6 +84,7 @@ async function runSmokeTests() {
   let passed = 0;
   let total = 0;
   let workerToken = '';
+  let customerToken = '';
   let ownerToken = '';
 
   const record = (success) => {
@@ -254,9 +255,65 @@ async function runSmokeTests() {
   );
 
   // --------------------------------------------------------------------------
-  // 4. Shop Admin & Management Operations
+  // 4. Customer Account, Loyalty & Memberships Portal
   // --------------------------------------------------------------------------
-  console.log(`\n${colors.bold}4. Shop Owner Administrative Operations${colors.reset}`);
+  console.log(`\n${colors.bold}4. Customer Account, Loyalty & VIP Membership Portal${colors.reset}`);
+  record(
+    await testStep('Customer Login as Jayant Patel (POST /auth/login)', async () => {
+      const res = await fetchJson(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({ identifier: '+919876599001', password: 'CustomerPass#123' }),
+      });
+      if (!res.accessToken) throw new Error('Missing accessToken in customer login response');
+      customerToken = res.accessToken;
+      return `User: ${res.user?.name} (Type: ${res.user?.type})`;
+    })
+  );
+
+  record(
+    await testStep('Customer Linked Shop Profile (GET /me/shops/classic-barber/profile)', async () => {
+      const profileData = await fetchJson(`${API_BASE}/me/shops/classic-barber/profile`, {
+        headers: { Authorization: `Bearer ${customerToken}` },
+      });
+      if (!profileData || profileData.status !== 'linked') throw new Error('Customer account not linked to shop');
+      return `Status: ${profileData.status} (Client: "${profileData.profile?.name}")`;
+    })
+  );
+
+  record(
+    await testStep('Customer Loyalty Balance (GET /me/shops/classic-barber/loyalty)', async () => {
+      const loyalty = await fetchJson(`${API_BASE}/me/shops/classic-barber/loyalty`, {
+        headers: { Authorization: `Bearer ${customerToken}` },
+      });
+      if (!loyalty || typeof loyalty.pointsBalance !== 'number') throw new Error('Invalid loyalty summary');
+      return `Balance: ${loyalty.pointsBalance} pts (Value: ₹${((loyalty.monetaryValuePaise || 0) / 100).toFixed(2)})`;
+    })
+  );
+
+  record(
+    await testStep('Customer Active VIP Membership (GET /me/shops/classic-barber/membership)', async () => {
+      const mem = await fetchJson(`${API_BASE}/me/shops/classic-barber/membership`, {
+        headers: { Authorization: `Bearer ${customerToken}` },
+      });
+      if (!mem || mem.status !== 'active') throw new Error('Active VIP membership not found');
+      return `Plan: "${mem.planName}" (Status: ${mem.status}, Multiplier: ${mem.pointsMultiplier}x)`;
+    })
+  );
+
+  record(
+    await testStep('Customer Appointments History (GET /me/shops/classic-barber/appointments)', async () => {
+      const appts = await fetchJson(`${API_BASE}/me/shops/classic-barber/appointments`, {
+        headers: { Authorization: `Bearer ${customerToken}` },
+      });
+      const list = Array.isArray(appts) ? appts : [];
+      return `${list.length} appointments in customer ledger`;
+    })
+  );
+
+  // --------------------------------------------------------------------------
+  // 5. Shop Admin & Management Operations
+  // --------------------------------------------------------------------------
+  console.log(`\n${colors.bold}5. Shop Owner Administrative Operations${colors.reset}`);
   record(
     await testStep('Shop Owner Login (POST /auth/login)', async () => {
       const res = await fetchJson(`${API_BASE}/auth/login`, {
@@ -362,9 +419,9 @@ async function runSmokeTests() {
   );
 
   // --------------------------------------------------------------------------
-  // 5. Next.js Web Frontend & PWA Metadata Routes
+  // 6. Next.js Web Frontend & PWA Metadata Routes
   // --------------------------------------------------------------------------
-  console.log(`\n${colors.bold}5. Next.js Web Frontend & PWA Routes${colors.reset}`);
+  console.log(`\n${colors.bold}6. Next.js Web Frontend & PWA Routes${colors.reset}`);
   const webRoutes = [
     ['Landing Page (GET /)', `${WEB_BASE}/`],
     ['Customer Booking Flow (GET /classic-barber/book)', `${WEB_BASE}/classic-barber/book`],

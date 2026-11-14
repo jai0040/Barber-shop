@@ -19,7 +19,15 @@ export class PublicCatalogController {
       if (!shop) throw new AppException(404, ErrorCodes.NOT_FOUND, 'Shop not found.');
       const cats = (await c.query('SELECT id, name FROM service_categories WHERE shop_id=$1 ORDER BY sort_order, lower(name)', [shop.id])).rows;
       const svcs = (await c.query('SELECT id, category_id, name, description, price_paise, duration_min FROM services WHERE shop_id=$1 AND status = \'active\' AND archived_at IS NULL ORDER BY lower(name)', [shop.id])).rows;
-      const shape = (s: any) => ({ id: s.id, name: s.name, description: s.description, pricePaise: s.price_paise, durationMin: s.duration_min });
+      const shape = (s: any) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        pricePaise: s.price_paise,
+        durationMin: s.duration_min,
+        durationMinutes: s.duration_min,
+        categoryId: s.category_id,
+      });
       const serviceList = svcs.map(shape);
       return {
         services: serviceList,
@@ -42,7 +50,15 @@ export class PublicServicesCatalogController {
       if (!shop) throw new AppException(404, ErrorCodes.NOT_FOUND, 'Shop not found.');
       const cats = (await c.query('SELECT id, name FROM service_categories WHERE shop_id=$1 ORDER BY sort_order, lower(name)', [shop.id])).rows;
       const svcs = (await c.query('SELECT id, category_id, name, description, price_paise, duration_min FROM services WHERE shop_id=$1 AND status = \'active\' AND archived_at IS NULL ORDER BY lower(name)', [shop.id])).rows;
-      const shape = (s: any) => ({ id: s.id, name: s.name, description: s.description, pricePaise: s.price_paise, durationMin: s.duration_min });
+      const shape = (s: any) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        pricePaise: s.price_paise,
+        durationMin: s.duration_min,
+        durationMinutes: s.duration_min,
+        categoryId: s.category_id,
+      });
       const serviceList = svcs.map(shape);
       return {
         services: serviceList,

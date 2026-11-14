@@ -88,6 +88,7 @@ function LoginForm() {
     } else {
       setIdentifier('+919876599001');
       setPassword('CustomerPass#123');
+      handleLogin('+919876599001', 'CustomerPass#123');
     }
   }
 

@@ -19,9 +19,13 @@ async function seed() {
     ssl: isLocal ? false : { rejectUnauthorized: false },
   });
 
-  // Ensure every connection has platform bypass active for seeding
+  let currentShopId = '';
+  // Ensure every connection has platform bypass and current shop context active for seeding
   pool.on('connect', (client) => {
     client.query("SELECT set_config('app.is_platform', 'on', false)").catch(() => {});
+    if (currentShopId) {
+      client.query("SELECT set_config('app.shop_id', $1, false)", [currentShopId]).catch(() => {});
+    }
   });
 
   try {
@@ -40,6 +44,8 @@ async function seed() {
       )).rows[0];
     }
     const shopId = shop.id;
+    currentShopId = shopId;
+    await pool.query("SELECT set_config('app.shop_id', $1, false)", [shopId]);
 
     // Set business hours for all 7 days (Mon-Sat 10:00-21:00, Sun 10:00-18:00)
     await pool.query(`DELETE FROM shop_hours WHERE shop_id = $1`, [shopId]);
@@ -224,22 +230,41 @@ async function seed() {
       { name: 'Virat Kohli',  phone: '+919876599004', email: 'virat@example.com',  notes: 'Sharp edges and beard lineup' },
     ];
 
+    const custPassHash = await hashPassword('CustomerPass#123');
+
     const customerIds: Record<string, string> = {};
     for (const c of demoCustomers) {
+      let custUser = (await pool.query(
+        `SELECT id FROM users WHERE phone = $1 OR email = $2`,
+        [c.phone, c.email]
+      )).rows[0];
+      if (!custUser) {
+        custUser = (await pool.query(
+          `INSERT INTO users (type, name, phone, email, password_hash, status)
+           VALUES ('customer', $1, $2, $3, $4, 'active') RETURNING id`,
+          [c.name, c.phone, c.email, custPassHash]
+        )).rows[0];
+      } else {
+        await pool.query(
+          `UPDATE users SET password_hash = $1, status = 'active' WHERE id = $2`,
+          [custPassHash, custUser.id]
+        );
+      }
+
       let custRow = (await pool.query(
         `SELECT id FROM customers WHERE shop_id = $1 AND phone = $2 AND archived_at IS NULL`,
         [shopId, c.phone]
       )).rows[0];
       if (!custRow) {
         custRow = (await pool.query(
-          `INSERT INTO customers (shop_id, name, phone, email, notes)
-           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-          [shopId, c.name, c.phone, c.email, c.notes]
+          `INSERT INTO customers (shop_id, user_id, name, phone, email, notes)
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [shopId, custUser.id, c.name, c.phone, c.email, c.notes]
         )).rows[0];
       } else {
         await pool.query(
-          `UPDATE customers SET name = $1, email = $2, notes = $3 WHERE id = $4`,
-          [c.name, c.email, c.notes, custRow.id]
+          `UPDATE customers SET user_id = $1, name = $2, email = $3, notes = $4 WHERE id = $5`,
+          [custUser.id, c.name, c.email, c.notes, custRow.id]
         );
       }
       customerIds[c.name] = custRow.id;
@@ -607,6 +632,7 @@ async function seed() {
     console.log('Shop Slug: classic-barber');
     console.log(`Owner Login: ${ownerEmail} / ClassicOwner#123`);
     console.log('Workers: Rahul, Amit, Raj (Password: WorkerPass#123)');
+    console.log('Customer Demo: +919876599001 / CustomerPass#123 (Jayant Patel - VIP Member, 150 pts)');
     console.log('Sample Appointments:');
     console.log(' - Jayant Patel @ 10:30 (Haircut ₹300) with Rahul [Booked, VIP Member, 150 pts]');
     console.log(' - Rohit Sharma @ 12:00 (Haircut + Beard Trim ₹450) with Amit [In Service, 60 pts]');
